@@ -4,20 +4,16 @@ from os.path import exists
 import requests
 import bs4
 
-CNN_RSS = 'https://www.cnn.com/services/rss/'
-CNN_MONEY_RSS = 'https://money.cnn.com/services/rss/'
-
 
 def get_cnn_rss_urls():
+    url = 'https://www.cnn.com/services/rss/'
     path = 'data/cnn_rss_html.html'
 
     if not exists(path):
-        html = requests.get(CNN_MONEY_RSS).text
-        with open(path, 'w') as f:
-            f.write(html)
+        html = requests.get(url).text
+        open(path, 'w').write(html)
     else:
-        with open(path, 'r') as f:
-            html = f.read()
+        html = open(path, 'r').read()
 
     soup = bs4.BeautifulSoup(html, 'html.parser')
 
@@ -30,21 +26,20 @@ def get_cnn_rss_urls():
 
 def get_cnn_money_rss_urls():
     path = 'data/cnn_money_rss_html.html'
+    url = 'https://money.cnn.com/services/rss/'
 
     if not exists(path):
-        html = requests.get(CNN_MONEY_RSS).text
-        with open(path, 'w') as f:
-            f.write(html)
+        html = requests.get(url).text
+        open(path, 'w').write(html)
     else:
-        with open(path, 'r') as f:
-            html = f.read()
+        html = open(path, 'r').read()
 
     soup = bs4.BeautifulSoup(html, 'html.parser')
 
     tags = soup.find_all('a', {'href': re.compile(r'^http://rss.cnn.com/(rss/money_|cnnmoneymorningbuzz)')})
     urls = list(set([t.attrs['href'] for t in tags]))
-    topics = ['cnn_money_' + u.removeprefix('http://rss.cnn.com/rss/money_').removeprefix('cnnmoneymorningbuzz')
-        .removesuffix('.rss') for u in urls]
+    topics = ['cnn_money_' + u.removeprefix('http://rss.cnn.com/rss/money_')
+        .removeprefix('http://rss.cnn.com/cnnmoneymorningbuzz').removesuffix('.rss') for u in urls]
 
     return dict(zip(topics, urls))
 
