@@ -5,15 +5,25 @@ import requests
 import bs4
 
 
+def read(path, mode='r'):
+    with open(path, mode) as f:
+        return f.read()
+
+
+def write(path, contents, mode='w'):
+    with open(path, mode) as f:
+        f.write(contents)
+
+
 def get_cnn_rss_urls():
     url = 'https://www.cnn.com/services/rss/'
     path = 'data/cnn_rss_html.html'
 
     if not exists(path):
         html = requests.get(url).text
-        open(path, 'w').write(html)
+        write(path, html)
     else:
-        html = open(path, 'r').read()
+        html = read(path)
 
     soup = bs4.BeautifulSoup(html, 'html.parser')
 
@@ -30,9 +40,9 @@ def get_cnn_money_rss_urls():
 
     if not exists(path):
         html = requests.get(url).text
-        open(path, 'w').write(html)
+        write(path, html)
     else:
-        html = open(path, 'r').read()
+        html = read(path)
 
     soup = bs4.BeautifulSoup(html, 'html.parser')
 
@@ -44,9 +54,13 @@ def get_cnn_money_rss_urls():
     return dict(zip(topics, urls))
 
 
-rss_feeds = {}
+def main():
+    rss_feeds = {}
+    rss_feeds.update(get_cnn_rss_urls())
+    rss_feeds.update(get_cnn_money_rss_urls())
 
-rss_feeds.update(get_cnn_rss_urls())
-rss_feeds.update(get_cnn_money_rss_urls())
+    print(rss_feeds)
 
-print(rss_feeds)
+
+if __name__ == '__main__':
+    main()
