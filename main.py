@@ -18,7 +18,7 @@ CNN_MONEY_RSS_PAGE_URL = 'https://money.cnn.com/services/rss/'
 CNN_MONEY_RSS_PAGE_LOCAL_PATH = 'data/cnn_money_rss_html.html'
 
 INDEX_PATH = 'data/index.json'
-INDEX_V2_PATH = 'data/index_v2.json'
+INDEX_V1_PATH = 'data/index_v1.json'
 LOGS_PATH = 'data/logs.log'
 
 
@@ -56,23 +56,39 @@ def worker(func):
 
 
 class IndexEntryModel:
-    def __init__(self, existing_model=None, **kwargs):
-        if existing_model:
-            kwargs.update(dict(existing_model))
-
+    def __init__(self, **kwargs):
         self.url = kwargs.get('url')
         self.has_been_scraped = kwargs.get('has_been_scraped', False)
         self.has_been_processed_with_text_extraction = kwargs.get('has_been_processed', False)
-        self.html_path = kwargs.get('html_path')
+        self.scraped_html_path = kwargs.get('html_path')
         self.scrape_was_successful = kwargs.get('scrape_was_successful')
-        self.scrape_exception = kwargs.get('scrape_exception')
+        self.scrape_error = kwargs.get('scrape_error')
         self.timestamp = kwargs.get('timestamp') or datetime.now(timezone.utc)
+
+    @classmethod
+    def from_dict(cls, obj: dict):
+        return cls(**obj)
+
+    def update(self, **kwargs):
+        for k, v in kwargs.items():
+            if hasattr(self, k):
+                setattr(self, k, v)
+        return self
 
     def __iter__(self):
         for k, v in self.__dict__.items():
             if isinstance(v, datetime):
                 v = v.isoformat()
             yield k, v
+
+
+def read_cnn_index() -> dict[str, IndexEntryModel]:
+    return {k: IndexEntryModel.from_dict(v) for k, v in try_load_json(read(INDEX_PATH)).items()} \
+        if exists(INDEX_PATH) else {}
+
+
+def save_cnn_index(index: dict[str, IndexEntryModel]) -> None:
+    write(INDEX_PATH, json.dumps({k: dict(v) for k, v in index.items()}))
 
 
 @worker
@@ -111,73 +127,74 @@ def get_cnn_money_rss_urls():
 
 
 @worker
-def index_latest_entries_from_rss():
+def index_latest_rss_entries():
+    report = {}
+
     topics_urls = [*get_cnn_rss_urls(), *get_cnn_money_rss_urls()]
     topics_entries = [(topic, feedparser.parse(url).entries) for topic, url in topics_urls]
-
-    index = try_load_json(read(INDEX_PATH)) if exists(INDEX_PATH) else {}
-    report = {}
+    index = read_cnn_index()
 
     for topic, entries in topics_entries:
         report[topic] = 0
         for entry in entries:
             url: str = entry.get('link')
             if url not in index and 'cnn.com' in url[:20]:
-                index[url] = dict(IndexEntryModel(url=url))
+                index[url] = IndexEntryModel(url=url)
                 report[topic] += 1
 
-    write(INDEX_PATH, json.dumps(index))
-    print('New entries indexed:\n')
+    save_cnn_index(index)
+
+    log('New entries indexed:\n')
     for k, v in report.items():
-        print(f'topic: {k} | new entries: {v}')
+        log(f'topic: {k} | new entries: {v}')
 
 
 @worker
-def scrape_newest_entries():
-    index = try_load_json(read(INDEX_PATH)) if exists(INDEX_PATH) else {}
-    entries_to_scrape = [entry for entry in index.values() if not entry['has_been_scraped']]
+def scrape_latest_urls_from_index():
+    index = read_cnn_index()
+    entries_to_scrape = [entry for entry in index.values() if not entry.has_been_scraped]
 
     log(f'Entries to scrape: {len(entries_to_scrape)}')
 
     for entry in entries_to_scrape:
         try:
-            resp = requests.get(entry['url'])
+            resp = requests.get(entry.url)
             resp.raise_for_status()
             html_path = 'data/cnn_articles/' + str(len(listdir('data/cnn_articles')) + 1) + '.html'
             write(html_path, resp.text)
 
-            log(f'Successfully scraped URL: {entry["url"]}', level='success')
-            index[entry['url']].update({
-                'has_been_scraped': True,
-                'html_path': html_path,
-                'scrape_was_successful': True
-            })
+            log(f'Successfully scraped URL: {entry.url}', level='success')
+            index[entry.url] = entry.update(
+                has_been_scraped=True,
+                scrape_was_successful=True,
+                scraped_html_path=html_path
+            )
 
         except Exception as e:
-            log(f'Exception while scraping URL: {entry["url"]} - {str(e)}', level='error')
-            index[entry['url']].update({
-                'has_been_scraped': True,
-                'scrape_was_successful': False,
-                'exception': str(e)
-            })
+            log(f'Exception while scraping URL: {entry.url} - {str(e)}', level='error')
+            index[entry.url] = entry.update(
+                has_been_scraped=True,
+                scrape_was_successful=False,
+                scrape_error=str(e)
+            )
 
-        write(INDEX_PATH, json.dumps(index))
+        save_cnn_index(index)
         time.sleep(2)
 
 
 @worker
 def extract_text_from_article():
-    index = try_load_json(read(INDEX_PATH)) if exists(INDEX_PATH) else {}
+    index = read_cnn_index()
     entries_to_process = [
-        item for item in index.values() if
-        not item['text_has_been_extracted'] and
-        item['scrape_was_successful']
+        entry for entry in index.values() if
+        not entry.has_been_processed_with_text_extraction and
+        entry.scrape_was_successful
     ]
 
     log(f'Entries to extract article text from: {len(entries_to_process)}')
     for entry in entries_to_process:
         try:
-            html_path = entry['html_path']
+            html_path = entry.scraped_html_path
             html = read(html_path)
             soup = bs4.BeautifulSoup(html)
 
@@ -197,9 +214,9 @@ def extract_text_from_article():
 
 @worker
 def workflow():
+    index_latest_rss_entries()
+    scrape_latest_urls_from_index()
     extract_text_from_article()
-    index_latest_entries_from_rss()
-    scrape_newest_entries()
 
 
 if __name__ == '__main__':
