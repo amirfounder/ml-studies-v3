@@ -1,7 +1,6 @@
-import json
+from datetime import timezone
 import re
 import time
-from os import listdir
 
 import feedparser
 import requests  # when SPA sites cause trouble -- skip to next news site. we will open up scraper service
@@ -9,6 +8,7 @@ import bs4
 import schedule
 
 from helpers import *
+from models import *
 
 CNN_RSS_PAGE_URL = 'https://www.cnn.com/services/rss/'
 CNN_RSS_PAGE_LOCAL_PATH = 'data/cnn_rss_html.html'
@@ -112,11 +112,11 @@ def scrape_latest_urls_from_index():
 
 @worker
 def extract_text_from_article():
-    cnn_article_html_index = read_cnn_article_index()
+    cnn_article_index = read_cnn_article_index()
 
     entries_to_process = [
-        entry for entry in cnn_article_html_index.values() if
-        not entry.has_text_been_extracted and
+        entry for entry in cnn_article_index.values() if
+        not entry.text_extraction_was_successful and
         entry.scrape_was_successful
     ]
 
@@ -127,25 +127,50 @@ def extract_text_from_article():
             html = read(html_path)
             soup = bs4.BeautifulSoup(html, 'html.parser')
 
+            # Category A article
             if len(articles := soup.find_all('div', {'class': 'Article__content'})) == 1:
                 article = articles[0]
-
                 paragraphs = article.find_all('div', {'class': 'Paragraph__component'})
                 related_articles = article.find_all('div', {'class': 'RelatedArticle__component'})
+
                 extracted_article_text = ExtractedArticleText(
-                    paragraphs=paragraphs,
-                    related_articles=related_articles
+                    paragraphs=[p.text for p in paragraphs],
+                    related_articles=[ra.text for ra in related_articles]
                 )
 
-                path = next_file_path('cnn_articles_extracted_text', '.json')
+                path = entry.scraped_html_path
+                path = path.replace('cnn_articles_html', 'cnn_articles_extracted_texts')
+                path = path.replace('.html', '.json')
                 write(path, json.dumps(dict(extracted_article_text)))
 
                 entry.text_extraction_was_successful = True
                 entry.text_extraction_path = path
 
+                log(f'Successfully extracted paragraphs and related articles - {entry.text_extraction_path}',
+                    level='success')
+
+            # Category B Article
+            elif len(articles := soup.find_all('div', {'class': 'pg-rail-tall__body'})) == 1:
+                article = articles[0]
+                paragraphs = article.find_all('div', {'class': 'zn-body__paragraph'})
+
+                extracted_article_text = ExtractedArticleText(paragraphs=[p.text for p in paragraphs])
+
+                path = entry.scraped_html_path
+                path = path.replace('cnn_articles_html', 'cnn_articles_extracted_texts')
+                path = path.replace('.html', '.json')
+                write(path, json.dumps(dict(extracted_article_text)))
+
+                entry.text_extraction_was_successful = True
+                entry.text_extraction_path = path
+
+                log(f'Successfully extracted paragraphs - {entry.text_extraction_path}', level='success')
+
+            # Does not fall under any Category (Unparseable!)
             else:
                 entry.text_extraction_was_successful = False
                 entry.text_extraction_error = 'No parser in place to parse HTML document'
+                log(f'No parser in place to parse HTML document - {entry.scraped_html_path}', level='info')
 
         except Exception as e:
             log(f'Exception occurred : {str(e)}')
@@ -155,11 +180,13 @@ def extract_text_from_article():
         entry.has_text_been_extracted = True
         entry.datetime_text_extracted = datetime.now(timezone.utc)
 
+    save_cnn_article_index(cnn_article_index)
+
 
 @worker
 def workflow():
-    # index_latest_rss_entries()
-    # scrape_latest_urls_from_index()
+    index_latest_rss_entries()
+    scrape_latest_urls_from_index()
     extract_text_from_article()
 
 
