@@ -128,7 +128,8 @@ def extract_text_from_article():
             soup = bs4.BeautifulSoup(html, 'html.parser')
 
             # Category A article
-            if len(articles := soup.find_all('div', {'class': 'Article__content'})) == 1:
+            if len(articles := soup.find_all('div', {'class': 'Article__content'})) == 1 or\
+                    len(articles := soup.find_all('div', {'class': 'BasicArticle__body'})) == 1:
                 article = articles[0]
                 paragraphs = article.find_all('div', {'class': 'Paragraph__component'})
                 related_articles = article.find_all('div', {'class': 'RelatedArticle__component'})
@@ -150,9 +151,43 @@ def extract_text_from_article():
                     level='success')
 
             # Category B Article
-            elif len(articles := soup.find_all('div', {'class': 'pg-rail-tall__body'})) == 1:
+            elif len(articles := soup.find_all('div', {'class': 'pg-rail-tall__body'})) == 1 or \
+                    len(articles := soup.find_all('div', {'class': 'pg-special-article__body'})) == 1:
                 article = articles[0]
                 paragraphs = article.find_all('div', {'class': 'zn-body__paragraph'})
+
+                extracted_article_text = ExtractedArticleText(paragraphs=[p.text for p in paragraphs])
+
+                path = entry.scraped_html_path
+                path = path.replace('cnn_articles_html', 'cnn_articles_extracted_texts')
+                path = path.replace('.html', '.json')
+                write(path, json.dumps(dict(extracted_article_text)))
+
+                entry.text_extraction_was_successful = True
+                entry.text_extraction_path = path
+
+                log(f'Successfully extracted paragraphs - {entry.text_extraction_path}', level='success')
+
+            # Category C
+            elif len(articles := soup.find_all('div', {'class': 'SpecialArticle__body'})) == 1:
+                article = articles[0]
+                paragraphs = article.find_all('div', {'class': 'SpecialArticle__paragraph'})
+
+                extracted_article_text = ExtractedArticleText(paragraphs=[p.text for p in paragraphs])
+
+                path = entry.scraped_html_path
+                path = path.replace('cnn_articles_html', 'cnn_articles_extracted_texts')
+                path = path.replace('.html', '.json')
+                write(path, json.dumps(dict(extracted_article_text)))
+
+                entry.text_extraction_was_successful = True
+                entry.text_extraction_path = path
+
+                log(f'Successfully extracted paragraphs - {entry.text_extraction_path}', level='success')
+
+            elif len(articles := soup.find_all('div', {'class': 'article__content'})) == 1:
+                article = articles[0]
+                paragraphs = article.find_all('p', {'class': 'paragraph'})
 
                 extracted_article_text = ExtractedArticleText(paragraphs=[p.text for p in paragraphs])
 
@@ -185,8 +220,8 @@ def extract_text_from_article():
 
 @worker
 def workflow():
-    index_latest_rss_entries()
-    scrape_latest_urls_from_index()
+    # index_latest_rss_entries()
+    # scrape_latest_urls_from_index()
     extract_text_from_article()
 
 
