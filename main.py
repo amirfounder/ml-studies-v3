@@ -1,7 +1,7 @@
 import json
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from os import listdir
 from os.path import exists
 
@@ -18,11 +18,8 @@ CNN_MONEY_RSS_PAGE_URL = 'https://money.cnn.com/services/rss/'
 CNN_MONEY_RSS_PAGE_LOCAL_PATH = 'data/cnn_money_rss_html.html'
 
 INDEX_PATH = 'data/index.json'
+INDEX_V2_PATH = 'data/index_v2.json'
 LOGS_PATH = 'data/logs.log'
-
-
-def next_cnn_article_path():
-    pass
 
 
 def read(path, mode='r', encoding='utf-8'):
@@ -49,6 +46,36 @@ def log(message, level='INFO'):
     write(LOGS_PATH, message, mode='a')
 
 
+def worker(func):
+    def wrapper(*args, **kwargs):
+        log(f'Started worker: {func.__name__}')
+        result = func(*args, **kwargs)
+        log(f'Finished worker: {func.__name__}')
+        return result
+    return wrapper
+
+
+class IndexEntryModel:
+    def __init__(self, existing_model=None, **kwargs):
+        if existing_model:
+            kwargs.update(dict(existing_model))
+
+        self.url = kwargs.get('url')
+        self.has_been_scraped = kwargs.get('has_been_scraped', False)
+        self.has_been_processed_with_text_extraction = kwargs.get('has_been_processed', False)
+        self.html_path = kwargs.get('html_path')
+        self.scrape_was_successful = kwargs.get('scrape_was_successful')
+        self.scrape_exception = kwargs.get('scrape_exception')
+        self.timestamp = kwargs.get('timestamp') or datetime.now(timezone.utc)
+
+    def __iter__(self):
+        for k, v in self.__dict__.items():
+            if isinstance(v, datetime):
+                v = v.isoformat()
+            yield k, v
+
+
+@worker
 def get_cnn_rss_urls():
     if not exists(CNN_RSS_PAGE_LOCAL_PATH):
         resp = requests.get(CNN_RSS_PAGE_URL)
@@ -65,6 +92,7 @@ def get_cnn_rss_urls():
     return list(zip(topics, urls))
 
 
+@worker
 def get_cnn_money_rss_urls():
     if not exists(CNN_MONEY_RSS_PAGE_LOCAL_PATH):
         resp = requests.get(CNN_MONEY_RSS_PAGE_URL)
@@ -82,8 +110,8 @@ def get_cnn_money_rss_urls():
     return list(zip(topics, urls))
 
 
+@worker
 def index_latest_entries_from_rss():
-    now = datetime.now()
     topics_urls = [*get_cnn_rss_urls(), *get_cnn_money_rss_urls()]
     topics_entries = [(topic, feedparser.parse(url).entries) for topic, url in topics_urls]
 
@@ -95,19 +123,7 @@ def index_latest_entries_from_rss():
         for entry in entries:
             url: str = entry.get('link')
             if url not in index and 'cnn.com' in url[:20]:
-                index[url] = {
-                    'url': url,
-                    'has_been_scraped': False,
-                    'html_path': None,
-                    'scrape_was_successful': None,
-                    'scrape_exception': None,
-                    'year': now.year,
-                    'month': now.month,
-                    'day': now.day,
-                    'hour': now.hour,
-                    'minute': now.minute,
-                    'second': now.second
-                }
+                index[url] = dict(IndexEntryModel(url=url))
                 report[topic] += 1
 
     write(INDEX_PATH, json.dumps(index))
@@ -116,6 +132,7 @@ def index_latest_entries_from_rss():
         print(f'topic: {k} | new entries: {v}')
 
 
+@worker
 def scrape_newest_entries():
     index = try_load_json(read(INDEX_PATH)) if exists(INDEX_PATH) else {}
     entries_to_scrape = [entry for entry in index.values() if not entry['has_been_scraped']]
@@ -148,13 +165,39 @@ def scrape_newest_entries():
         time.sleep(2)
 
 
+@worker
 def extract_text_from_article():
-    pass
+    index = try_load_json(read(INDEX_PATH)) if exists(INDEX_PATH) else {}
+    entries_to_process = [
+        item for item in index.values() if
+        not item['text_has_been_extracted'] and
+        item['scrape_was_successful']
+    ]
+
+    log(f'Entries to extract article text from: {len(entries_to_process)}')
+    for entry in entries_to_process:
+        try:
+            html_path = entry['html_path']
+            html = read(html_path)
+            soup = bs4.BeautifulSoup(html)
+
+            articles = soup.find_all('div', {'class': 'Article__primary'})
+            if len(articles) != 3:
+                msg = f'Unexpected amount of divs with "Article__primary" class. Expected: 3. Got: {len(articles)}'
+                raise Exception(msg)
+
+            # TODO - Validation?
+            article = articles[1]
+            paragraphs = article.find_all('div', {'class': 'Paragraph__component'})
+            print(len(paragraphs))
+
+        except Exception as e:
+            log(f'Exception occurred : {str(e)}')
 
 
+@worker
 def workflow():
-
-
+    extract_text_from_article()
     index_latest_entries_from_rss()
     scrape_newest_entries()
 
