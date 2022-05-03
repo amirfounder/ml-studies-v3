@@ -11,6 +11,20 @@ import bs4
 import schedule
 
 
+CNN_RSS_PAGE_URL = 'https://www.cnn.com/services/rss/'
+CNN_RSS_PAGE_LOCAL_PATH = 'data/cnn_rss_html.html'
+
+CNN_MONEY_RSS_PAGE_URL = 'https://money.cnn.com/services/rss/'
+CNN_MONEY_RSS_PAGE_LOCAL_PATH = 'data/cnn_money_rss_html.html'
+
+INDEX_PATH = 'data/index.json'
+LOGS_PATH = 'data/logs.log'
+
+
+def next_cnn_article_path():
+    pass
+
+
 def read(path, mode='r', encoding='utf-8'):
     with open(path, mode, encoding=encoding) as f:
         return f.read()
@@ -32,19 +46,16 @@ def log(message, level='INFO'):
     message = datetime.now().isoformat().ljust(30) + level.upper().ljust(10) + message
     print(message)
     message += '\n'
-    write('data/logs.log', message, mode='a')
+    write(LOGS_PATH, message, mode='a')
 
 
 def get_cnn_rss_urls():
-    url = 'https://www.cnn.com/services/rss/'
-    path = 'data/cnn_rss_html.html'
+    if not exists(CNN_RSS_PAGE_LOCAL_PATH):
+        resp = requests.get(CNN_RSS_PAGE_URL)
+        resp.raise_for_status()
+        write(CNN_RSS_PAGE_LOCAL_PATH, resp.text)
 
-    if not exists(path):
-        html = requests.get(url).text
-        write(path, html)
-    else:
-        html = read(path)
-
+    html = read(CNN_RSS_PAGE_LOCAL_PATH)
     soup = bs4.BeautifulSoup(html, 'html.parser')
 
     tags = soup.find_all('a', {'href': re.compile(r'^http://rss.cnn.com/rss/')})
@@ -55,15 +66,12 @@ def get_cnn_rss_urls():
 
 
 def get_cnn_money_rss_urls():
-    path = 'data/cnn_money_rss_html.html'
-    url = 'https://money.cnn.com/services/rss/'
+    if not exists(CNN_MONEY_RSS_PAGE_LOCAL_PATH):
+        resp = requests.get(CNN_MONEY_RSS_PAGE_URL)
+        resp.raise_for_status()
+        write(CNN_MONEY_RSS_PAGE_LOCAL_PATH, resp.text)
 
-    if not exists(path):
-        html = requests.get(url).text
-        write(path, html)
-    else:
-        html = read(path)
-
+    html = read(CNN_MONEY_RSS_PAGE_LOCAL_PATH)
     soup = bs4.BeautifulSoup(html, 'html.parser')
 
     tags = soup.find_all('a', {'href': re.compile(r'^http://rss.cnn.com/(rss/money_|cnnmoneymorningbuzz)')})
@@ -79,9 +87,7 @@ def index_latest_entries_from_rss():
     topics_urls = [*get_cnn_rss_urls(), *get_cnn_money_rss_urls()]
     topics_entries = [(topic, feedparser.parse(url).entries) for topic, url in topics_urls]
 
-    path = 'data/index.json'
-
-    index = try_load_json(read(path)) if exists(path) else {}
+    index = try_load_json(read(INDEX_PATH)) if exists(INDEX_PATH) else {}
     report = {}
 
     for topic, entries in topics_entries:
@@ -104,16 +110,14 @@ def index_latest_entries_from_rss():
                 }
                 report[topic] += 1
 
-    write(path, json.dumps(index))
+    write(INDEX_PATH, json.dumps(index))
     print('New entries indexed:\n')
     for k, v in report.items():
         print(f'topic: {k} | new entries: {v}')
 
 
 def scrape_newest_entries():
-    path = 'data/index.json'
-
-    index = try_load_json(read(path)) if exists(path) else {}
+    index = try_load_json(read(INDEX_PATH)) if exists(INDEX_PATH) else {}
     entries_to_scrape = [entry for entry in index.values() if not entry['has_been_scraped']]
 
     log(f'Entries to scrape: {len(entries_to_scrape)}')
@@ -125,14 +129,12 @@ def scrape_newest_entries():
             html_path = 'data/cnn_articles/' + str(len(listdir('data/cnn_articles')) + 1) + '.html'
             write(html_path, resp.text)
 
+            log(f'Successfully scraped URL: {entry["url"]}', level='success')
             index[entry['url']].update({
                 'has_been_scraped': True,
                 'html_path': html_path,
                 'scrape_was_successful': True
             })
-
-            write(path, json.dumps(index))
-            log(f'Successfully scraped URL: {entry["url"]}', level='success')
 
         except Exception as e:
             log(f'Exception while scraping URL: {entry["url"]} - {str(e)}', level='error')
@@ -142,7 +144,12 @@ def scrape_newest_entries():
                 'exception': str(e)
             })
 
+        write(INDEX_PATH, json.dumps(index))
         time.sleep(2)
+
+
+def extract_text_from_article():
+    pass
 
 
 def workflow():
