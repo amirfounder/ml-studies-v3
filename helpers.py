@@ -43,8 +43,10 @@ def worker(func):
         log(f'Started worker: {func.__name__}')
 
         try:
+            start = datetime.now()
             result = func(*args, **kwargs)
-            log(f'Finished worker: {func.__name__}. Result: {json.dumps(result)}')
+            end = datetime.now()
+            log(f'Finished worker: {func.__name__}. Result: {json.dumps(result)}. Elapsed = {str(end - start)}')
             return result
 
         except Exception as e:
