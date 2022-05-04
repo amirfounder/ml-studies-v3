@@ -229,6 +229,18 @@ def extract_text_from_article():
 
 
 @worker
+def process_extracted_text():
+    with CnnArticleIndex() as index:
+        entries = [
+            entry for entry in index.values() if
+            entry.text_extraction_was_successful
+        ]
+
+        for entry in entries:
+            pass
+
+
+@worker
 def workflow():
     index_latest_rss_entries()
     scrape_latest_urls_from_index()
