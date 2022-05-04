@@ -1,11 +1,9 @@
-import threading
 from datetime import timezone
 import re
 import time
 from threading import Thread
 
-import feedparser
-import requests  # when SPA sites cause trouble -- skip to next news site. we will open up scraper service
+import requests  # when JS rendering sites cause trouble -- skip to next news site. we will open up scraper service l8r
 import bs4
 import schedule
 
@@ -54,10 +52,6 @@ def get_cnn_money_rss_urls():
     return list(zip(topics, urls))
 
 
-def get_entries_from_rss_url(idx, i, topic, url):
-    idx[i] = (topic, feedparser.parse(url).entries)
-
-
 @worker
 def index_latest_rss_entries():
     with CnnArticleIndex() as index:
@@ -67,7 +61,7 @@ def index_latest_rss_entries():
         threads = []
         topics_entries = [None] * len(topics_urls)
         for i, (topic, url) in enumerate(topics_urls):
-            thread = threading.Thread(target=get_entries_from_rss_url, args=(topics_entries, i, topic, url))
+            thread = Thread(target=get_entries_from_rss_url, args=(topics_entries, i, topic, url))
             thread.start()
             threads.append(thread)
 

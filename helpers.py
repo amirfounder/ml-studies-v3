@@ -1,5 +1,6 @@
 import json
 import threading
+import feedparser
 from datetime import datetime
 from os import listdir
 from os.path import exists
@@ -87,6 +88,10 @@ class CnnArticleIndex:
 
 def active_thread_count():
     return [t for t in threading.enumerate() if t.name.startswith('ml-studies-thread')]
+
+
+def get_entries_from_rss_url(idx, i, topic, url):
+    idx[i] = (topic, feedparser.parse(url).entries)
 
 
 if __name__ == '__main__':
