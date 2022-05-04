@@ -1,6 +1,8 @@
+import threading
 from datetime import timezone
 import re
 import time
+from threading import Thread
 
 import feedparser
 import requests  # when SPA sites cause trouble -- skip to next news site. we will open up scraper service
@@ -52,173 +54,184 @@ def get_cnn_money_rss_urls():
     return list(zip(topics, urls))
 
 
+def get_entries_from_rss_url(idx, i, topic, url):
+    idx[i] = (topic, feedparser.parse(url).entries)
+
+
 @worker
 def index_latest_rss_entries():
-    report = {}
+    with CnnArticleIndex() as index:
+        report = {}
+        topics_urls = [*get_cnn_rss_urls(), *get_cnn_money_rss_urls()]
 
-    topics_urls = [*get_cnn_rss_urls(), *get_cnn_money_rss_urls()]
-    topics_entries = [(topic, feedparser.parse(url).entries) for topic, url in topics_urls]
-    index = read_cnn_article_index()
+        threads = []
+        topics_entries = [None] * len(topics_urls)
+        for i, (topic, url) in enumerate(topics_urls):
+            thread = threading.Thread(target=get_entries_from_rss_url, args=(topics_entries, i, topic, url))
+            thread.start()
+            threads.append(thread)
 
-    for topic, entries in topics_entries:
-        report[topic] = 0
-        for entry in entries:
-            url: str = entry.get('link')
-            if url not in index and 'cnn.com' in url[:20]:
-                index[url] = IndexEntryModel(url=url, datetime_indexed=datetime.now(timezone.utc))
-                report[topic] += 1
+        for thread in threads:
+            thread.join()
 
-    save_cnn_article_index(index)
+        for topic, entries in topics_entries:
+            report[topic] = 0
+            for entry in entries:
+                url: str = entry.get('link')
+                if url not in index and 'cnn.com' in url[:20]:
 
-    log('New entries indexed:\n')
-    for k, v in report.items():
-        log(f'topic: {k} | new entries: {v}')
+                    next_file_name = str(len(listdir('data/cnn_articles_html')) + 1)
+                    scraped_html_path = 'data/cnn_articles_html/' + next_file_name + '.html'
+                    extracted_text_path = 'data/cnn_articles_extracted_texts/' + next_file_name + '.json'
+
+                    index[url] = IndexEntryModel(
+                        url=url,
+                        datetime_indexed=datetime.now(timezone.utc),
+                        scraped_html_path=scraped_html_path,
+                        extracted_text_path=extracted_text_path
+                    )
+                    report[topic] += 1
+
+        log('New entries indexed:\n')
+        for k, v in report.items():
+            log(f'topic: {k} | new entries: {v}')
 
 
 @worker
 def scrape_latest_urls_from_index():
-    index = read_cnn_article_index()
-    entries_to_scrape = [entry for entry in index.values() if not entry.has_scraping_been_attempted]
+    with CnnArticleIndex() as index:
+        entries_to_scrape = [entry for entry in index.values() if not entry.has_scraping_been_attempted]
 
-    log(f'Entries to scrape: {len(entries_to_scrape)}')
+        log(f'Entries to scrape: {len(entries_to_scrape)}')
 
-    for entry in entries_to_scrape:
+        for entry in entries_to_scrape:
 
-        entry.has_scraping_been_attempted = True
-        entry.datetime_scraped = datetime.now(timezone.utc)
+            entry.has_scraping_been_attempted = True
+            entry.datetime_scraped = datetime.now(timezone.utc)
 
-        try:
-            resp = requests.get(entry.url)
-            resp.raise_for_status()
-            html_path = 'data/cnn_articles_html/' + str(len(listdir('data/cnn_articles_html')) + 1) + '.html'
-            write(html_path, resp.text)
+            try:
+                resp = requests.get(entry.url)
+                resp.raise_for_status()
+                write(entry.scraped_html_path, resp.text)
 
-            log(f'Successfully scraped URL: {entry.url}', level='success')
-            entry.scrape_was_successful = True
-            entry.scraped_html_path = html_path
+                log(f'Successfully scraped URL: {entry.url}', level='success')
+                entry.scrape_was_successful = True
 
-        except Exception as e:
-            log(f'Exception while scraping URL: {entry.url} - {str(e)}', level='error')
-            entry.scrape_was_successful = False
-            entry.scrape_error = str(e)
+            except Exception as e:
+                log(f'Exception while scraping URL: {entry.url} - {str(e)}', level='error')
+                entry.scrape_was_successful = False
+                entry.scrape_error = str(e)
 
-        entry.has_scraping_been_attempted = True
-        entry.datetime_scraped = datetime.now(timezone.utc)
-
-    save_cnn_article_index(index)
-    time.sleep(2)
+            entry.has_scraping_been_attempted = True
+            entry.datetime_scraped = datetime.now(timezone.utc)
+            time.sleep(1)
 
 
 @worker
 def extract_text_from_article():
-    cnn_article_index = read_cnn_article_index()
+    with CnnArticleIndex() as cnn_article_index:
 
-    entries_to_process = [
-        entry for entry in cnn_article_index.values() if
-        not entry.text_extraction_was_successful and  # comment this to resync
-        entry.scrape_was_successful and
-        'cnn.com/audio' not in entry.url and
-        'cnn.com/videos' not in entry.url and
-        'cnn.com/specials' not in entry.url and
-        'cnn.com/video' not in entry.url and
-        'cnn.com/gallery' not in entry.url and
-        'cnn.com/interactive' not in entry.url and
-        'cnn.com/infographic' not in entry.url and
-        'cnn.com/calculator' not in entry.url and
-        'live-news' not in entry.url
-    ]
+        entries_to_process = [
+            entry for entry in cnn_article_index.values() if
+            not entry.has_text_extraction_been_attempted and  # comment this to resync
+            entry.scrape_was_successful and
+            'cnn.com/audio' not in entry.url and
+            'cnn.com/videos' not in entry.url and
+            'cnn.com/specials' not in entry.url and
+            'cnn.com/video' not in entry.url and
+            'cnn.com/gallery' not in entry.url and
+            'cnn.com/interactive' not in entry.url and
+            'cnn.com/infographic' not in entry.url and
+            'cnn.com/calculator' not in entry.url and
+            'cnn.com/election' not in entry.url and
+            'live-news' not in entry.url
+        ]
 
-    log(f'Entries to extract article text from: {len(entries_to_process)}')
-    for entry in entries_to_process:
+        log(f'Entries to extract article text from: {len(entries_to_process)}')
+        for entry in entries_to_process:
 
-        entry.has_text_extraction_been_attempted = True
-        entry.datetime_text_extracted = datetime.now(timezone.utc)
+            entry.has_text_extraction_been_attempted = True
+            entry.datetime_text_extracted = datetime.now(timezone.utc)
 
-        try:
-            html_path = entry.scraped_html_path
-            html = read(html_path)
-            soup = bs4.BeautifulSoup(html, 'html.parser')
-            
-            cnn_selector_map = {
-                'category_a': {
-                    'outer': [
-                        ('div', {'class': 'Article__content'}),
-                        ('div', {'class': 'BasicArticle__body'})
-                    ],
-                    'inner': ('div', {'class': 'Paragraph__component'})
-                },
-                'category_b': {
-                    'outer': [
-                        ('div', {'class': 'pg-rail-tall__body'}),
-                        ('div', {'class': 'pg-special-article__body'})
-                    ],
-                    'inner': ('div', {'class': 'zn-body__paragraph'})
-                },
-                'category_c': {
-                    'outer': [
-                        ('div', {'class': 'SpecialArticle__body'})
-                    ],
-                    'inner': ('div', {'class': 'SpecialArticle__paragraph'})
-                },
-                'category_d': {
-                    'outer': [
-                        ('div', {'class': 'article__content'})
-                    ],
-                    'inner': ('p', {'class': 'paragraph'})
-                },
-                'category_e': {
-                    'outer': [
-                        ('div', {'id': 'storycontent'}),
-                        ('div', {'class': 'content-container'})
-                    ],
-                    'inner': ('p',)
+            try:
+                html_path = entry.scraped_html_path
+                html = read(html_path)
+                soup = bs4.BeautifulSoup(html, 'html.parser')
+
+                cnn_selector_map = {
+                    'category_a': {
+                        'outer': [
+                            ('div', {'class': 'Article__content'}),
+                            ('div', {'class': 'BasicArticle__body'})
+                        ],
+                        'inner': ('div', {'class': 'Paragraph__component'})
+                    },
+                    'category_b': {
+                        'outer': [
+                            ('div', {'class': 'pg-rail-tall__body'}),
+                            ('div', {'class': 'pg-special-article__body'})
+                        ],
+                        'inner': ('div', {'class': 'zn-body__paragraph'})
+                    },
+                    'category_c': {
+                        'outer': [
+                            ('div', {'class': 'SpecialArticle__body'})
+                        ],
+                        'inner': ('div', {'class': 'SpecialArticle__paragraph'})
+                    },
+                    'category_d': {
+                        'outer': [
+                            ('div', {'class': 'article__content'})
+                        ],
+                        'inner': ('p', {'class': 'paragraph'})
+                    },
+                    'category_e': {
+                        'outer': [
+                            ('div', {'id': 'storycontent'}),
+                            ('div', {'class': 'content-container'})
+                        ],
+                        'inner': ('p',)
+                    }
                 }
-            }
-            
-            # Every entry will loop over the selector strategy map to find the right strategy for text extraction.
-            # If it can't find the right outer strategy, it is logged with level CRITICAL
-            for strategy, selectors_map in cnn_selector_map.items():
-                article = None
-                
-                outer_selectors = selectors_map.get('outer')
-                inner_selector = selectors_map.get('inner')
-                
-                for i, outer_selector in enumerate(outer_selectors):
-                    if len(articles := soup.find_all(*outer_selector)) == 1:
-                        article = articles[0]
-                        strategy += str(i + 1)
 
-                if not article:
-                    continue
+                # Every entry will loop over the selector strategy map to find the right strategy for text extraction.
+                # If it can't find the right outer strategy, it is logged with level CRITICAL
+                for strategy, selectors_map in cnn_selector_map.items():
+                    article = None
 
-                paragraphs = article.find_all(*inner_selector)
-                extracted_article_text = ExtractedArticleText(paragraphs=[p.text for p in paragraphs])
+                    outer_selectors = selectors_map.get('outer')
+                    inner_selector = selectors_map.get('inner')
 
-                path = entry.scraped_html_path
-                path = path.replace('cnn_articles_html', 'cnn_articles_extracted_texts')
-                path = path.replace('.html', '.json')
-                write(path, json.dumps(dict(extracted_article_text)))
+                    for i, outer_selector in enumerate(outer_selectors):
+                        if len(articles := soup.find_all(*outer_selector)) == 1:
+                            article = articles[0]
+                            strategy += str(i + 1)
 
-                entry.text_extraction_was_successful = True
-                entry.extracted_text_path = path
-                entry.text_extraction_strategy_used = 'cnn_' + strategy
-                entry.text_extraction_error = None
+                    if not article:
+                        continue
 
-                log(f'Successfully extracted paragraphs - {entry.extracted_text_path}', level='success')
-                break
-            
-            if not entry.has_text_extraction_been_attempted:
-                log(f'No parser in place to parse this HTML document - {entry.scraped_html_path}', level='critical')
+                    paragraphs = article.find_all(*inner_selector)
+                    extracted_article_text = ExtractedArticleText(paragraphs=[p.text for p in paragraphs])
+
+                    write(entry.extracted_text_path, json.dumps(dict(extracted_article_text)))
+
+                    entry.text_extraction_was_successful = True
+                    entry.text_extraction_strategy_used = 'cnn_' + strategy
+                    entry.text_extraction_error = None
+
+                    log(f'Successfully extracted paragraphs - {entry.extracted_text_path}', level='success')
+                    break
+
+                if not entry.text_extraction_was_successful:
+                    log(f'No parser in place to parse this HTML document - {entry.scraped_html_path}', level='critical')
+                    entry.text_extraction_was_successful = False
+                    entry.text_extraction_error = 'No parser in place to parse this HTML document'
+                    entry.extracted_text_path = None
+
+            except Exception as e:
+                log(f'Exception occurred : {str(e)}', level='error')
                 entry.text_extraction_was_successful = False
-                entry.text_extraction_error = 'No parser in place to parse this HTML document'
-                entry.extracted_text_path = None
-        
-        except Exception as e:
-            log(f'Exception occurred : {str(e)}', level='error')
-            entry.text_extraction_was_successful = False
-            entry.text_extraction_error = str(e)
-
-    save_cnn_article_index(cnn_article_index)
+                entry.text_extraction_error = str(e)
 
 
 @worker
