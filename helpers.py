@@ -57,25 +57,13 @@ def worker(func):
     return wrapper
 
 
-def read_cnn_article_index() -> dict[str, IndexEntryModel]:
-    index = {}
-    if exists(CNN_ARTICLE_HTML_INDEX_V2_PATH):
-        for k, v in try_load_json(read(CNN_ARTICLE_HTML_INDEX_V2_PATH)).items():
-            index[k] = IndexEntryModel.from_dict(v)
-    return index
-
-
-def save_cnn_article_index(index: dict[str, IndexEntryModel]) -> None:
-    write(CNN_ARTICLE_HTML_INDEX_V2_PATH, json.dumps({k: dict(v) for k, v in index.items()}))
-
-
 class CnnArticleIndex:
     def __init__(self):
-        self.index = {}
+        self.index: dict[str, IndexEntryModel] = {}
 
     def __enter__(self):
         log('Reading index from file ...')
-        self.index = read_cnn_article_index()
+        self._read_cnn_article_index()
         return self.index
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -83,7 +71,15 @@ class CnnArticleIndex:
             return
 
         log('Saving index to file ...')
-        save_cnn_article_index(self.index)
+        self._save_cnn_article_index()
+
+    def _read_cnn_article_index(self) -> None:
+        if exists(CNN_ARTICLE_HTML_INDEX_V2_PATH):
+            for k, v in try_load_json(read(CNN_ARTICLE_HTML_INDEX_V2_PATH)).items():
+                self.index[k] = IndexEntryModel.from_dict(v)
+
+    def _save_cnn_article_index(self) -> None:
+        write(CNN_ARTICLE_HTML_INDEX_V2_PATH, json.dumps({k: dict(v) for k, v in self.index.items()}))
 
 
 def active_thread_count():
