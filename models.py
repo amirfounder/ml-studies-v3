@@ -15,17 +15,25 @@ class Model(ABC):
         for k, v in self.__dict__.items():
             if isinstance(v, datetime):
                 v = v.isoformat()
+            if isinstance(v, Model):
+                v = dict(v)
             yield k, v
 
 
-class IndexEntryModel(Model):
+class IndexEntry(Model):
     def __init__(self, **kwargs):
-        self.reports: dict[str, Report] = {}
+        self.reports: dict[str, Report] = kwargs.get('reports')
         self.url = kwargs.get('url')
 
         self.scraped_html_path = kwargs.get('scraped_html_path')
         self.extracted_text_v1_path = kwargs.get('extracted_text_v1_path')
         self.extracted_text_v2_path = kwargs.get('extracted_text_v2_path')
+
+    @classmethod
+    def from_dict(cls, obj: dict):
+        for k, v in obj['reports'].items():
+            obj['reports'][k] = Report.from_dict(v)
+        return super().from_dict(obj)
 
 
 class Report(Model, ABC):

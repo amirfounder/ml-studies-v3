@@ -8,7 +8,7 @@ import feedparser
 from datetime import datetime
 from os.path import exists
 
-from models import IndexEntryModel, Report
+from models import IndexEntry, Report
 
 LOGS_PATH = 'data/logs.log'
 CNN_ARTICLE_INDEX_PATH = 'data/index_v3.json'
@@ -67,7 +67,7 @@ class Worker:
         return self._worker(*args, **kwargs)
 
     def task(self, func):
-        def wrapper(entry: IndexEntryModel):
+        def wrapper(entry: IndexEntry):
             report = Report()
             report.open()
 
@@ -88,7 +88,7 @@ class Worker:
 
 class CnnArticleIndex:
     def __init__(self):
-        self.index: dict[str, IndexEntryModel] = {}
+        self.index: dict[str, IndexEntry] = {}
 
     def __enter__(self):
         log('Reading index from file ...')
@@ -105,7 +105,7 @@ class CnnArticleIndex:
     def _read_cnn_article_index(self) -> None:
         if exists(CNN_ARTICLE_INDEX_PATH):
             for k, v in try_load_json(read(CNN_ARTICLE_INDEX_PATH)).items():
-                self.index[k] = IndexEntryModel.from_dict(v)
+                self.index[k] = IndexEntry.from_dict(v)
 
     def _save_cnn_article_index(self) -> None:
         write(CNN_ARTICLE_INDEX_PATH, json.dumps({k: dict(v) for k, v in self.index.items()}))
@@ -141,14 +141,7 @@ def get_entries_from_rss_url(idx, i, topic, url):
 
 
 if __name__ == '__main__':
-    v2_index = try_load_json(read('data/index_v2.json'))
-    v3_index = {}
-    for url, v2_entry in v2_index.items():
-        v3_index[url] = {
-            'url': v2_entry['url'],
-            'reports': None,
-            'scraped_html_path': v2_entry['scraped_html_path'],
-            'extracted_text_v1_path': v2_entry['extracted_text_v1_path'],
-            'extracted_text_v2_path': v2_entry.get('extracted_text_v1_path').replace('v1', 'v2') if v2_entry.get('extracted_text_v1_path') else None
-        }
-    write(CNN_ARTICLE_INDEX_PATH, json.dumps(v3_index))
+    with CnnArticleIndex() as index:
+        entries = index.values()
+        for entry in entries:
+            entry.reports['scrape_urls_v1'].log_as_success()

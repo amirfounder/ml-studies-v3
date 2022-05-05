@@ -81,7 +81,7 @@ def index_latest_rss_entries():
                     extracted_text_v1_path = 'data/cnn_articles_extracted_texts_v1/' + next_file_name + '.json'
                     extracted_text_v2_path = 'data/cnn_articles_extracted_texts_v2/' + next_file_name + '.txt'
 
-                    index[url] = IndexEntryModel(
+                    index[url] = IndexEntry(
                         url=url,
                         datetime_indexed=datetime.now(timezone.utc),
                         scraped_html_path=scraped_html_path,
@@ -262,7 +262,7 @@ def preprocess_extracted_text_v1():
 
 @worker()
 def pipeline():
-    index_latest_rss_entries()
+    # index_latest_rss_entries()
     scrape_latest_urls_from_index()
     extract_text_from_article_v1()
     preprocess_extracted_text_v1()
