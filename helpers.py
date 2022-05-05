@@ -3,6 +3,7 @@ import json
 import threading
 from time import sleep
 from typing import Callable, Optional
+from shutil import copyfile
 
 import feedparser
 from datetime import datetime
@@ -51,15 +52,19 @@ class Worker:
         def _worker(*args, **kwargs):
             log(f'Started worker: {self.name}')
 
+            start = datetime.now()
+            result = None
+
             try:
-                start = datetime.now()
                 result = func(*args, **kwargs)
-                end = datetime.now()
-                log(f'Finished worker: {self.name}. Time elapsed = {str(end - start)}')
-                return result
 
             except Exception as e:
                 log(f'Exception occurred running worker: {str(e)} | Worker: {self.name}', level='error')
+
+            finally:
+                end = datetime.now()
+                log(f'Finished worker: {self.name}. Time elapsed = {str(end - start)}')
+                return result
 
         self._worker = _worker
 
@@ -67,48 +72,51 @@ class Worker:
         return self._worker(*args, **kwargs)
 
     def task(self, func):
-        def wrapper(entry: IndexEntry):
+        def inner(*args, **kwargs):
+            entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)
             report = Report()
             report.open()
 
-            entry.reports[self.name] = report
-            signature = inspect.signature(func)
-
             try:
-                result = func(entry, report=report) if 'report' in signature.parameters else func(entry)
+                result = func(*args, **kwargs)
                 report.log_as_success()
                 return result
 
             except Exception as e:
-                log(f'Exception occurred running task: {str(e)} | Worker: {self.name}', level='error')
+                log(f'Exception occurred running task: {str(e)} | Worker: {self.name} | Task : {func.__name__}'
+                    , level='error')
                 report.log_as_failed(str(e))
 
-        return wrapper
+            finally:
+                if entry and isinstance(entry, IndexEntry):
+                    entry.reports[self.name] = report
+
+        return inner
 
 
 class CnnArticleIndex:
     def __init__(self):
-        self.index: dict[str, IndexEntry] = {}
+        self.index: dict[str, IndexEntry | dict] = {}
 
     def __enter__(self):
         log('Reading index from file ...')
-        self._read_cnn_article_index()
+        if exists(CNN_ARTICLE_INDEX_PATH):
+            for k, v in try_load_json(read(CNN_ARTICLE_INDEX_PATH)).items():
+                self.index[k] = IndexEntry.load(v)
         return self.index
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type or exc_val or exc_tb:
+            log(f'Exception occurred closing the CNNArticleIndex: {str(exc_type)} {str(exc_val)} - {str(exc_tb)}',
+                level='error')
             return
 
         log('Saving index to file ...')
-        self._save_cnn_article_index()
+        for k, v in self.index.items():
+            self.index[k] = dict(v)
 
-    def _read_cnn_article_index(self) -> None:
-        if exists(CNN_ARTICLE_INDEX_PATH):
-            for k, v in try_load_json(read(CNN_ARTICLE_INDEX_PATH)).items():
-                self.index[k] = IndexEntry.from_dict(v)
-
-    def _save_cnn_article_index(self) -> None:
-        write(CNN_ARTICLE_INDEX_PATH, json.dumps({k: dict(v) for k, v in self.index.items()}))
+        write(CNN_ARTICLE_INDEX_PATH, json.dumps(self.index))
+        return ['lol']
 
 
 def run_concurrently(t_args_list: list[tuple[Callable, tuple, dict]], max_concurrent_threads=100):
@@ -141,7 +149,22 @@ def get_entries_from_rss_url(idx, i, topic, url):
 
 
 if __name__ == '__main__':
-    with CnnArticleIndex() as index:
-        entries = index.values()
-        for entry in entries:
-            entry.reports['scrape_urls_v1'].log_as_success()
+    # v2_index = try_load_json(read('data/index_v2.json'))
+    # with CnnArticleIndex() as v3_index:
+    #     for i, v2 in enumerate(list(v2_index.values())):
+    #         url = v2['url']
+    #         v3_index[url] = IndexEntry(
+    #             url=url,
+    #             reports={
+    #                 'scrape_urls_v1': Report(),
+    #                 'extract_text_v1': Report(),
+    #                 'extract_text_v2': Report(),
+    #                 'preprocess_extracted_text_v1': Report()
+    #             },
+    #             topic=None,
+    #             scraped_html_path=f'data/cnn_articles_html/{i + 1}.html',
+    #             extracted_text_v1_path=f'data/cnn_articles_extracted_texts_v1/{i + 1}.json',
+    #             extracted_text_v2_path=f'data/cnn_articles_extracted_texts_v2/{i + 1}.json'
+    #         )
+    pass
+
