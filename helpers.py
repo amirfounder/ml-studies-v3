@@ -1,9 +1,7 @@
-import inspect
 import json
 import threading
 from time import sleep
 from typing import Callable, Optional
-from shutil import copyfile
 
 import feedparser
 from datetime import datetime
