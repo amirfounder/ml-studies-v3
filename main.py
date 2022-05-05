@@ -244,7 +244,7 @@ def process_extracted_text():
 def workflow():
     index_latest_rss_entries()
     scrape_latest_urls_from_index()
-    extract_text_from_article()
+    # extract_text_from_article()
 
 
 if __name__ == '__main__':
