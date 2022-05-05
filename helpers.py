@@ -1,15 +1,13 @@
-import inspect
 import json
 import threading
 from time import sleep
 from typing import Callable, Optional
-from shutil import copyfile
 
 import feedparser
-from datetime import datetime
+from datetime import datetime, timezone
 from os.path import exists
 
-from models import IndexEntry, Report
+from models import IndexEntry, Report, ReportType
 
 LOGS_PATH = 'data/logs.log'
 CNN_ARTICLE_INDEX_PATH = 'data/index_v3.json'
@@ -47,23 +45,29 @@ def worker(name: str = None):
 
 class Worker:
     def __init__(self, func, name: Optional[str]):
-        self.name = name
+        self.name = name or func.__name__
 
         def _worker(*args, **kwargs):
             log(f'Started worker: {self.name}')
 
-            start = datetime.now()
             result = None
+            msg = []
+            lvl = None
+            start = datetime.now()
 
             try:
                 result = func(*args, **kwargs)
+                msg.append('Finished worker')
+                lvl = 'success'
 
             except Exception as e:
-                log(f'Exception occurred running worker: {str(e)} | Worker: {self.name}', level='error')
+                msg.append(f'Exception occurred {type(e).__name__} {str(e)}.')
+                lvl = 'error'
 
             finally:
                 end = datetime.now()
-                log(f'Finished worker: {self.name}. Time elapsed = {str(end - start)}')
+                msg.extend([f'Worker: {self.name}', f'Time Elapsed: {str(end - start)}'])
+                log('. '.join(msg), level=lvl)
                 return result
 
         self._worker = _worker
@@ -73,28 +77,41 @@ class Worker:
 
     def task(self, func):
         def inner(*args, **kwargs):
+            log(f'Started Task: {func.__name__}')
             entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)
             report = Report()
             report.open()
 
+            result = None
+            msg = []
+            lvl = None
+            start = datetime.now()
+
             try:
                 result = func(*args, **kwargs)
-                report.log_as_success()
-                return result
+                report.success()
+                msg.append('Finished Task')
+                lvl = 'success'
 
             except Exception as e:
-                log(f'Exception occurred running task: {str(e)} | Worker: {self.name} | Task : {func.__name__}'
-                    , level='error')
-                report.log_as_failed(str(e))
+                msg.append(f'Exception occurred: {type(e).__name__} {str(e)}')
+                lvl = 'error'
+                report.fail(str(e))
 
             finally:
+                end = datetime.now()
+                msg.extend([f'Worker: {self.name}', f'Task: {func.__name__}', f'Time Elapsed: {str(end - start)}'])
+                log('. '.join(msg), level=lvl)
+
                 if entry and isinstance(entry, IndexEntry):
                     entry.reports[self.name] = report
+
+                return result
 
         return inner
 
 
-class CnnArticleIndex:
+class CnnArticleIndexManager:
     def __init__(self):
         self.index: dict[str, IndexEntry | dict] = {}
 
@@ -102,12 +119,13 @@ class CnnArticleIndex:
         log('Reading index from file ...')
         if exists(CNN_ARTICLE_INDEX_PATH):
             for k, v in try_load_json(read(CNN_ARTICLE_INDEX_PATH)).items():
+                v['_index'] = self.index
                 self.index[k] = IndexEntry.load(v)
         return self.index
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type or exc_val or exc_tb:
-            log(f'Exception occurred closing the CNNArticleIndex: {str(exc_type)} {str(exc_val)} - {str(exc_tb)}',
+            log(f'Exception occurred closing CnnArticleIndex: {str(exc_type)} {str(exc_val)} - {str(exc_tb)}',
                 level='error')
             return
 
@@ -149,22 +167,6 @@ def get_entries_from_rss_url(idx, i, topic, url):
 
 
 if __name__ == '__main__':
-    # v2_index = try_load_json(read('data/index_v2.json'))
-    # with CnnArticleIndex() as v3_index:
-    #     for i, v2 in enumerate(list(v2_index.values())):
-    #         url = v2['url']
-    #         v3_index[url] = IndexEntry(
-    #             url=url,
-    #             reports={
-    #                 'scrape_urls_v1': Report(),
-    #                 'extract_text_v1': Report(),
-    #                 'extract_text_v2': Report(),
-    #                 'preprocess_extracted_text_v1': Report()
-    #             },
-    #             topic=None,
-    #             scraped_html_path=f'data/cnn_articles_html/{i + 1}.html',
-    #             extracted_text_v1_path=f'data/cnn_articles_extracted_texts_v1/{i + 1}.json',
-    #             extracted_text_v2_path=f'data/cnn_articles_extracted_texts_v2/{i + 1}.json'
-    #         )
-    pass
-
+    with CnnArticleIndexManager() as _index:
+        for _entry in _index.values():
+            _entry[ReportType.extract_text].reset()
