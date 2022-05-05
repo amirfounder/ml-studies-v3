@@ -2,18 +2,16 @@ import inspect
 import json
 import threading
 from time import sleep
-from typing import Callable
+from typing import Callable, Optional
 
 import feedparser
 from datetime import datetime
-from os import listdir
 from os.path import exists
 
 from models import IndexEntryModel, Report
 
 LOGS_PATH = 'data/logs.log'
-CNN_ARTICLE_HTML_INDEX_V1_PATH = 'data/index_v1.json'
-CNN_ARTICLE_HTML_INDEX_V2_PATH = 'data/index_v2.json'
+CNN_ARTICLE_INDEX_PATH = 'data/index_v3.json'
 
 
 def read(path, mode='r', encoding='utf-8'):
@@ -33,10 +31,6 @@ def try_load_json(o):
         return {}
 
 
-def next_file_path(data_dir, file_suffix):
-    return 'data/' + data_dir + '/' + str(len(listdir('data/' + data_dir)) + 1) + file_suffix
-
-
 def log(message, level='INFO'):
     message = datetime.now().isoformat().ljust(30) + level.upper().ljust(10) + message
     print(message)
@@ -44,13 +38,15 @@ def log(message, level='INFO'):
     write(LOGS_PATH, message, mode='a')
 
 
-class Worker:
-    def __init__(self, name: str = None):
-        self.name = name
+def worker(name: str = None):
+    def inner(func):
+        return Worker(func, name)
+    return inner
 
-    def __call__(self, func):
-        if not self.name:
-            self.name = func.__name__
+
+class Worker:
+    def __init__(self, func, name: Optional[str]):
+        self.name = name
 
         def _worker(*args, **kwargs):
             log(f'Started worker: {self.name}')
@@ -65,7 +61,10 @@ class Worker:
             except Exception as e:
                 log(f'Exception occurred running worker: {str(e)} | Worker: {self.name}', level='error')
 
-        return _worker
+        self._worker = _worker
+
+    def __call__(self, *args, **kwargs):
+        return self._worker(*args, **kwargs)
 
     def task(self, func):
         def wrapper(entry: IndexEntryModel):
@@ -87,9 +86,6 @@ class Worker:
         return wrapper
 
 
-worker = Worker
-
-
 class CnnArticleIndex:
     def __init__(self):
         self.index: dict[str, IndexEntryModel] = {}
@@ -107,16 +103,12 @@ class CnnArticleIndex:
         self._save_cnn_article_index()
 
     def _read_cnn_article_index(self) -> None:
-        if exists(CNN_ARTICLE_HTML_INDEX_V2_PATH):
-            for k, v in try_load_json(read(CNN_ARTICLE_HTML_INDEX_V2_PATH)).items():
+        if exists(CNN_ARTICLE_INDEX_PATH):
+            for k, v in try_load_json(read(CNN_ARTICLE_INDEX_PATH)).items():
                 self.index[k] = IndexEntryModel.from_dict(v)
 
     def _save_cnn_article_index(self) -> None:
-        write(CNN_ARTICLE_HTML_INDEX_V2_PATH, json.dumps({k: dict(v) for k, v in self.index.items()}))
-
-
-def active_thread_count():
-    return len([t for t in threading.enumerate() if t.name.startswith('ml-studies-thread')])
+        write(CNN_ARTICLE_INDEX_PATH, json.dumps({k: dict(v) for k, v in self.index.items()}))
 
 
 def run_concurrently(t_args_list: list[tuple[Callable, tuple, dict]], max_concurrent_threads=100):
@@ -136,7 +128,8 @@ def run_concurrently(t_args_list: list[tuple[Callable, tuple, dict]], max_concur
         t = threading.Thread(**t_kwargs)
         t.start()
 
-        while active_thread_count() > max_concurrent_threads:
+        while len([t for t in threading.enumerate() if t.name.startswith('ml-studies-thread')]) >\
+                max_concurrent_threads:
             sleep(1)
 
     for t in ts:
@@ -148,4 +141,14 @@ def get_entries_from_rss_url(idx, i, topic, url):
 
 
 if __name__ == '__main__':
-    pass
+    v2_index = try_load_json(read('data/index_v2.json'))
+    v3_index = {}
+    for url, v2_entry in v2_index.items():
+        v3_index[url] = {
+            'url': v2_entry['url'],
+            'reports': None,
+            'scraped_html_path': v2_entry['scraped_html_path'],
+            'extracted_text_v1_path': v2_entry['extracted_text_v1_path'],
+            'extracted_text_v2_path': v2_entry.get('extracted_text_v1_path').replace('v1', 'v2') if v2_entry.get('extracted_text_v1_path') else None
+        }
+    write(CNN_ARTICLE_INDEX_PATH, json.dumps(v3_index))

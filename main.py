@@ -1,6 +1,6 @@
-from datetime import timezone
 import re
 import time
+from os import listdir
 from threading import Thread
 
 import requests  # when JS rendering sites cause trouble -- skip to next news site. we will open up scraper service l8r
@@ -193,8 +193,8 @@ def extract_text_from_article_v1():
     with CnnArticleIndex() as cnn_article_index:
         entries = [
             entry for entry in cnn_article_index.values() if
-            not entry.text_extraction_v1_was_successful and  # comment this to resync
-            entry.scrape_was_successful and
+            entry.reports[extract_text_from_article_v1.name].status == Report.FAILED and  # comment this to resync
+            entry.reports[scrape_latest_urls_from_index.name].status == Report.SUCCESS and
             'cnn.com/audio' not in entry.url and
             'cnn.com/videos' not in entry.url and
             'cnn.com/specials' not in entry.url and
