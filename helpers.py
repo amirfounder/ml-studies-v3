@@ -1,15 +1,18 @@
+import inspect
 import json
 import threading
+from time import sleep
+from typing import Callable, Optional
+from shutil import copyfile
+
 import feedparser
 from datetime import datetime
-from os import listdir
 from os.path import exists
 
-from models import IndexEntryModel
+from models import IndexEntry, Report
 
 LOGS_PATH = 'data/logs.log'
-CNN_ARTICLE_HTML_INDEX_V1_PATH = 'data/index_v1.json'
-CNN_ARTICLE_HTML_INDEX_V2_PATH = 'data/index_v2.json'
+CNN_ARTICLE_INDEX_PATH = 'data/index_v3.json'
 
 
 def read(path, mode='r', encoding='utf-8'):
@@ -29,10 +32,6 @@ def try_load_json(o):
         return {}
 
 
-def next_file_path(data_dir, file_suffix):
-    return 'data/' + data_dir + '/' + str(len(listdir('data/' + data_dir)) + 1) + file_suffix
-
-
 def log(message, level='INFO'):
     message = datetime.now().isoformat().ljust(30) + level.upper().ljust(10) + message
     print(message)
@@ -40,50 +39,109 @@ def log(message, level='INFO'):
     write(LOGS_PATH, message, mode='a')
 
 
-def worker(func):
-    def wrapper(*args, **kwargs):
-        log(f'Started worker: {func.__name__}')
+def worker(name: str = None):
+    def inner(func):
+        return Worker(func, name)
+    return inner
 
-        try:
+
+class Worker:
+    def __init__(self, func, name: Optional[str]):
+        self.name = name
+
+        def _worker(*args, **kwargs):
+            log(f'Started worker: {self.name}')
+
             start = datetime.now()
-            result = func(*args, **kwargs)
-            end = datetime.now()
-            log(f'Finished worker: {func.__name__}. Time elapsed = {str(end - start)}')
-            return result
+            result = None
 
-        except Exception as e:
-            log(f'Unhandled worker exception: {str(e)} | {func.__name__}', level='error')
+            try:
+                result = func(*args, **kwargs)
 
-    return wrapper
+            except Exception as e:
+                log(f'Exception occurred running worker: {str(e)} | Worker: {self.name}', level='error')
+
+            finally:
+                end = datetime.now()
+                log(f'Finished worker: {self.name}. Time elapsed = {str(end - start)}')
+                return result
+
+        self._worker = _worker
+
+    def __call__(self, *args, **kwargs):
+        return self._worker(*args, **kwargs)
+
+    def task(self, func):
+        def inner(*args, **kwargs):
+            entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)
+            report = Report()
+            report.open()
+
+            try:
+                result = func(*args, **kwargs)
+                report.log_as_success()
+                return result
+
+            except Exception as e:
+                log(f'Exception occurred running task: {str(e)} | Worker: {self.name} | Task : {func.__name__}'
+                    , level='error')
+                report.log_as_failed(str(e))
+
+            finally:
+                if entry and isinstance(entry, IndexEntry):
+                    entry.reports[self.name] = report
+
+        return inner
 
 
 class CnnArticleIndex:
     def __init__(self):
-        self.index: dict[str, IndexEntryModel] = {}
+        self.index: dict[str, IndexEntry | dict] = {}
 
     def __enter__(self):
         log('Reading index from file ...')
-        self._read_cnn_article_index()
+        if exists(CNN_ARTICLE_INDEX_PATH):
+            for k, v in try_load_json(read(CNN_ARTICLE_INDEX_PATH)).items():
+                self.index[k] = IndexEntry.load(v)
         return self.index
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type or exc_val or exc_tb:
+            log(f'Exception occurred closing the CNNArticleIndex: {str(exc_type)} {str(exc_val)} - {str(exc_tb)}',
+                level='error')
             return
 
         log('Saving index to file ...')
-        self._save_cnn_article_index()
+        for k, v in self.index.items():
+            self.index[k] = dict(v)
 
-    def _read_cnn_article_index(self) -> None:
-        if exists(CNN_ARTICLE_HTML_INDEX_V2_PATH):
-            for k, v in try_load_json(read(CNN_ARTICLE_HTML_INDEX_V2_PATH)).items():
-                self.index[k] = IndexEntryModel.from_dict(v)
-
-    def _save_cnn_article_index(self) -> None:
-        write(CNN_ARTICLE_HTML_INDEX_V2_PATH, json.dumps({k: dict(v) for k, v in self.index.items()}))
+        write(CNN_ARTICLE_INDEX_PATH, json.dumps(self.index))
+        return ['lol']
 
 
-def active_thread_count():
-    return [t for t in threading.enumerate() if t.name.startswith('ml-studies-thread')]
+def run_concurrently(t_args_list: list[tuple[Callable, tuple, dict]], max_concurrent_threads=100):
+    ts = []
+
+    for i, t_args in enumerate(t_args_list):
+        t_kwargs = {
+            'target': t_args[0],
+            'daemon': True,
+            'name': 'ml-studies-thread-' + str(i)
+        }
+        if t_args[1]:
+            t_kwargs['args'] = t_args[1] if isinstance(t_args[1], tuple) else (t_args[1],)
+        if t_args[2]:
+            t_kwargs['kwargs'] = t_args[2]
+
+        t = threading.Thread(**t_kwargs)
+        t.start()
+
+        while len([t for t in threading.enumerate() if t.name.startswith('ml-studies-thread')]) >\
+                max_concurrent_threads:
+            sleep(1)
+
+    for t in ts:
+        t.join()
 
 
 def get_entries_from_rss_url(idx, i, topic, url):
@@ -91,4 +149,22 @@ def get_entries_from_rss_url(idx, i, topic, url):
 
 
 if __name__ == '__main__':
+    # v2_index = try_load_json(read('data/index_v2.json'))
+    # with CnnArticleIndex() as v3_index:
+    #     for i, v2 in enumerate(list(v2_index.values())):
+    #         url = v2['url']
+    #         v3_index[url] = IndexEntry(
+    #             url=url,
+    #             reports={
+    #                 'scrape_urls_v1': Report(),
+    #                 'extract_text_v1': Report(),
+    #                 'extract_text_v2': Report(),
+    #                 'preprocess_extracted_text_v1': Report()
+    #             },
+    #             topic=None,
+    #             scraped_html_path=f'data/cnn_articles_html/{i + 1}.html',
+    #             extracted_text_v1_path=f'data/cnn_articles_extracted_texts_v1/{i + 1}.json',
+    #             extracted_text_v2_path=f'data/cnn_articles_extracted_texts_v2/{i + 1}.json'
+    #         )
     pass
+
