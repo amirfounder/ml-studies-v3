@@ -1,14 +1,15 @@
+import inspect
 import json
 import threading
 from time import sleep
-from typing import Callable, Optional
+from typing import Callable
 
 import feedparser
 from datetime import datetime
 from os import listdir
 from os.path import exists
 
-from models import IndexEntryModel
+from models import IndexEntryModel, Report
 
 LOGS_PATH = 'data/logs.log'
 CNN_ARTICLE_HTML_INDEX_V1_PATH = 'data/index_v1.json'
@@ -43,21 +44,50 @@ def log(message, level='INFO'):
     write(LOGS_PATH, message, mode='a')
 
 
-def worker(func):
-    def wrapper(*args, **kwargs):
-        log(f'Started worker: {func.__name__}')
+class Worker:
+    def __init__(self, name: str = None):
+        self.name = name
 
-        try:
-            start = datetime.now()
-            result = func(*args, **kwargs)
-            end = datetime.now()
-            log(f'Finished worker: {func.__name__}. Time elapsed = {str(end - start)}')
-            return result
+    def __call__(self, func):
+        if not self.name:
+            self.name = func.__name__
 
-        except Exception as e:
-            log(f'Unhandled worker exception: {str(e)} | {func.__name__}', level='error')
+        def _worker(*args, **kwargs):
+            log(f'Started worker: {self.name}')
 
-    return wrapper
+            try:
+                start = datetime.now()
+                result = func(*args, **kwargs)
+                end = datetime.now()
+                log(f'Finished worker: {self.name}. Time elapsed = {str(end - start)}')
+                return result
+
+            except Exception as e:
+                log(f'Exception occurred running worker: {str(e)} | Worker: {self.name}', level='error')
+
+        return _worker
+
+    def task(self, func):
+        def wrapper(entry: IndexEntryModel):
+            report = Report()
+            report.open()
+
+            entry.reports[self.name] = report
+            signature = inspect.signature(func)
+
+            try:
+                result = func(entry, report=report) if 'report' in signature.parameters else func(entry)
+                report.log_as_success()
+                return result
+
+            except Exception as e:
+                log(f'Exception occurred running task: {str(e)} | Worker: {self.name}', level='error')
+                report.log_as_failed(str(e))
+
+        return wrapper
+
+
+worker = Worker
 
 
 class CnnArticleIndex:
@@ -89,9 +119,7 @@ def active_thread_count():
     return len([t for t in threading.enumerate() if t.name.startswith('ml-studies-thread')])
 
 
-def run_concurrently(
-        t_args_list: list[tuple[Callable, Optional[tuple], Optional[dict]]],
-        max_concurrent_threads=100):
+def run_concurrently(t_args_list: list[tuple[Callable, tuple, dict]], max_concurrent_threads=100):
     ts = []
 
     for i, t_args in enumerate(t_args_list):

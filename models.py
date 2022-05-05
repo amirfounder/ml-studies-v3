@@ -1,8 +1,16 @@
 from abc import abstractmethod, ABC
-from datetime import datetime
+from datetime import datetime, timezone
 
 
-class Model(ABC):
+class Dictable(ABC):
+    def __iter__(self):
+        for k, v in self.__dict__.items():
+            if isinstance(v, datetime):
+                v = v.isoformat()
+            yield k, v
+
+
+class Model(Dictable, ABC):
     @abstractmethod
     def __init__(self, **kwargs):
         pass
@@ -17,15 +25,10 @@ class Model(ABC):
                 setattr(self, k, v)
         return self
 
-    def __iter__(self):
-        for k, v in self.__dict__.items():
-            if isinstance(v, datetime):
-                v = v.isoformat()
-            yield k, v
-
 
 class IndexEntryModel(Model):
     def __init__(self, **kwargs):
+        self.reports: dict[str, Report] = {}
         self.url = kwargs.get('url')
 
         self.has_scraping_been_attempted = kwargs.get('has_scraping_been_attempted', False)
@@ -52,6 +55,30 @@ class IndexEntryModel(Model):
             else None
         self.datetime_v1_text_extracted = d if isinstance(d := kwargs.get('datetime_v1_text_extracted'), datetime)\
             else None
+
+
+class Report(Dictable, ABC):
+    SUCCESS = 'SUCCESS'
+    FAILED = 'FAILED'
+    
+    def __init__(self):
+        self.status = None
+        self.error = None
+        self.has_been_attempted = False
+        self.last_attempt_timestamp = None
+        self.additional_data = {}
+
+    def open(self):
+        self.has_been_attempted = True
+        self.last_attempt_timestamp = datetime.now(timezone.utc)
+    
+    def log_as_failed(self, error: str):
+        self.status = Report.FAILED
+        self.error = error
+
+    def log_as_success(self):
+        self.status = Report.SUCCESS
+        self.error = None
 
 
 class ArticleText(Model):

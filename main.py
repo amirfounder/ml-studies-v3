@@ -20,7 +20,7 @@ CNN_MONEY_RSS_PAGE_LOCAL_PATH = 'data/cnn_money_rss_html.html'
 nlp = spacy.load('en_core_web_sm')
 
 
-@worker
+@worker()
 def get_cnn_rss_urls():
     if not exists(CNN_RSS_PAGE_LOCAL_PATH):
         resp = requests.get(CNN_RSS_PAGE_URL)
@@ -37,7 +37,7 @@ def get_cnn_rss_urls():
     return list(zip(topics, urls))
 
 
-@worker
+@worker()
 def get_cnn_money_rss_urls():
     if not exists(CNN_MONEY_RSS_PAGE_LOCAL_PATH):
         resp = requests.get(CNN_MONEY_RSS_PAGE_URL)
@@ -55,7 +55,7 @@ def get_cnn_money_rss_urls():
     return list(zip(topics, urls))
 
 
-@worker
+@worker(name='index_rss_urls')
 def index_latest_rss_entries():
     with CnnArticleIndex() as index:
         report = {}
@@ -85,7 +85,8 @@ def index_latest_rss_entries():
                         url=url,
                         datetime_indexed=datetime.now(timezone.utc),
                         scraped_html_path=scraped_html_path,
-                        extracted_text_v1_path=extracted_text_v1_path
+                        extracted_text_v1_path=extracted_text_v1_path,
+                        extracted_text_v2_path=extracted_text_v2_path
                     )
                     report[topic] += 1
 
@@ -94,122 +95,100 @@ def index_latest_rss_entries():
             log(f'topic: {k} | new entries: {v}')
 
 
-@worker
+@worker(name='scrape_urls_v1')
 def scrape_latest_urls_from_index():
 
+    @scrape_latest_urls_from_index.task
     def task(entry):
-        entry.has_scraping_been_attempted = True
-        entry.datetime_scraped = datetime.now(timezone.utc)
+        resp = requests.get(entry.url)
+        resp.raise_for_status()
+        write(entry.scraped_html_path, resp.text)
 
-        try:
-            resp = requests.get(entry.url)
-            resp.raise_for_status()
-            write(entry.scraped_html_path, resp.text)
+        log(f'Successfully scraped URL: {entry.url}', level='success')
+        entry.scrape_was_successful = True
 
-            log(f'Successfully scraped URL: {entry.url}', level='success')
-            entry.scrape_was_successful = True
-
-        except Exception as e:
-            log(f'Exception while scraping URL: {entry.url} - {str(e)}', level='error')
-            entry.scrape_was_successful = False
-            entry.scrape_error = str(e)
-
-        entry.has_scraping_been_attempted = True
-        entry.datetime_scraped = datetime.now(timezone.utc)
         time.sleep(1)
 
     with CnnArticleIndex() as index:
-        entries_to_scrape = [entry for entry in index.values() if not entry.has_scraping_been_attempted]
+        entries_to_scrape = [
+            entry for entry in index.values() if
+            not entry.reports[scrape_latest_urls_from_index.name].has_been_attempted
+        ]
+
         log(f'Entries to scrape: {len(entries_to_scrape)}')
-        # run_concurrently([(task, entry, None) for entry in entries_to_scrape])
-        [task(entry) for entry in entries_to_scrape]
+
+        for entry in entries_to_scrape:
+            task(entry)
 
 
-@worker
+@worker(name='extract_text_v1')
 def extract_text_from_article_v1():
 
-    def task(entry):
-        entry.has_text_extraction_v1_been_attempted = True
-        entry.datetime_v1_text_extracted = datetime.now(timezone.utc)
-
-        try:
-            soup = bs4.BeautifulSoup(read(entry.scraped_html_path), 'html.parser')
-
-            cnn_selector_map = {
-                'category_a': {
-                    'outer': [
-                        ('div', {'class': 'Article__content'}),
-                        ('div', {'class': 'BasicArticle__body'})
-                    ],
-                    'inner': ('div', {'class': 'Paragraph__component'})
-                },
-                'category_b': {
-                    'outer': [
-                        ('div', {'class': 'pg-rail-tall__body'}),
-                        ('div', {'class': 'pg-special-article__body'})
-                    ],
-                    'inner': ('div', {'class': 'zn-body__paragraph'})
-                },
-                'category_c': {
-                    'outer': [
-                        ('div', {'class': 'SpecialArticle__body'})
-                    ],
-                    'inner': ('div', {'class': 'SpecialArticle__paragraph'})
-                },
-                'category_d': {
-                    'outer': [
-                        ('div', {'class': 'article__content'})
-                    ],
-                    'inner': ('p', {'class': 'paragraph'})
-                },
-                'category_e': {
-                    'outer': [
-                        ('div', {'id': 'storycontent'}),
-                        ('div', {'class': 'content-container'})
-                    ],
-                    'inner': ('p',)
-                }
+    @extract_text_from_article_v1.task
+    def task(entry, report: Report):
+        soup = bs4.BeautifulSoup(read(entry.scraped_html_path), 'html.parser')
+        cnn_selector_map = {
+            'category_a': {
+                'outer': [
+                    ('div', {'class': 'Article__content'}),
+                    ('div', {'class': 'BasicArticle__body'})
+                ],
+                'inner': ('div', {'class': 'Paragraph__component'})
+            },
+            'category_b': {
+                'outer': [
+                    ('div', {'class': 'pg-rail-tall__body'}),
+                    ('div', {'class': 'pg-special-article__body'})
+                ],
+                'inner': ('div', {'class': 'zn-body__paragraph'})
+            },
+            'category_c': {
+                'outer': [
+                    ('div', {'class': 'SpecialArticle__body'})
+                ],
+                'inner': ('div', {'class': 'SpecialArticle__paragraph'})
+            },
+            'category_d': {
+                'outer': [
+                    ('div', {'class': 'article__content'})
+                ],
+                'inner': ('p', {'class': 'paragraph'})
+            },
+            'category_e': {
+                'outer': [
+                    ('div', {'id': 'storycontent'}),
+                    ('div', {'class': 'content-container'})
+                ],
+                'inner': ('p',)
             }
+        }
 
-            # Every entry will loop over the selector strategy map to find the right strategy for text extraction.
-            # If it can't find the right outer strategy, it is logged with level CRITICAL
-            for strategy, selectors_map in cnn_selector_map.items():
-                article = None
+        flag = False
 
-                outer_selectors = selectors_map.get('outer')
-                inner_selector = selectors_map.get('inner')
+        for strategy, selectors_map in cnn_selector_map.items():
+            article = None
 
-                for i, outer_selector in enumerate(outer_selectors):
-                    if len(articles := soup.find_all(*outer_selector)) == 1:
-                        article = articles[0]
-                        strategy += str(i + 1)
+            for i, outer_selector in enumerate(selectors_map.get('outer')):
+                if len(articles := soup.find_all(*outer_selector)) == 1:
+                    article = articles[0]
+                    strategy += str(i + 1)
 
-                if not article:
-                    continue
+            if not article:
+                continue
 
-                paragraphs = article.find_all(*inner_selector)
-                article_text = ArticleText(paragraphs=[p.text for p in paragraphs])
+            article_text = ArticleText(paragraphs=[p.text for p in article.find_all(*selectors_map.get('inner'))])
+            write(entry.extracted_text_v1_path, json.dumps(dict(article_text)))
+            report.additional_data['strategy_used'] = 'cnn_' + strategy
 
-                write(entry.extracted_text_v1_path, json.dumps(dict(article_text)))
+            log(f'Successfully extracted paragraphs - {entry.extracted_text_v1_path}', level='success')
 
-                entry.text_extraction_v1_was_successful = True
-                entry.text_extraction_v1_strategy_used = 'cnn_' + strategy
-                entry.text_extraction_v1_error = None
+            flag = True
+            break
 
-                log(f'Successfully extracted paragraphs - {entry.extracted_text_v1_path}', level='success')
-                break
-
-            if not entry.text_extraction_v1_was_successful:
-                log(f'No strategy in place to parse this HTML document - {entry.scraped_html_path}', level='info')
-                entry.text_extraction_v1_was_successful = False
-                entry.text_extraction_v1_error = 'No strategy in place to parse this HTML document'
-                entry.text_extraction_v1_strategy_used = None
-
-        except Exception as e:
-            log(f'Exception occurred : {str(e)}', level='error')
-            entry.text_extraction_v1_was_successful = False
-            entry.text_extraction_v1_error = str(e)
-            entry.text_extraction_v1_strategy_used = None
+        if not flag:
+            log(f'No strategy in place to parse this HTML document - {entry.scraped_html_path}', level='info')
+            report.status = report.FAILED
+            report.additional_data['strategy_used'] = 'No strategy found'
 
     with CnnArticleIndex() as cnn_article_index:
         entries = [
@@ -229,29 +208,19 @@ def extract_text_from_article_v1():
         ]
 
         log(f'Entries to extract article text from (v1): {len(entries)}')
-        # run_concurrently([(task, entry, None) for entry in entries])
-        [task(entry) for entry in entries]
+
+        for entry in entries:
+            task(entry)
 
 
-@worker
+@worker(name='extract_text_v2')
 def extract_text_from_article_v2():
-    
+
+    @extract_text_from_article_v2.task
     def task(entry):
-        entry.has_text_extraction_v2_been_attempted = True
-        entry.datetime_v2_text_extracted = datetime.now(timezone.utc)
-
-        try:
-            soup = bs4.BeautifulSoup(read(entry.scraped_html_path), 'html.parser')
-            text = soup.text
-            write(entry.extracted_text_v2_path, text)
-
-            entry.text_extraction_v2_was_successful = True
-            entry.text_extraction_v2_error = None
-
-        except Exception as e:
-            log(f'Exception occurred running "extract_text_from_article_v2" : {str(e)}')
-            entry.text_extraction_v2_error = str(e)
-            entry.text_extraction_v2_was_successful = False
+        soup = bs4.BeautifulSoup(read(entry.scraped_html_path), 'html.parser')
+        text = soup.text
+        write(entry.extracted_text_v2_path, text)
 
     with CnnArticleIndex() as index:
         entries = [entry for entry in index.values()]
@@ -259,9 +228,10 @@ def extract_text_from_article_v2():
         [task(entry) for entry in entries]
 
 
-@worker
-def preprocess_extracted_text():
+@worker(name='preprocess_extracted_text_v1')
+def preprocess_extracted_text_v1():
 
+    @preprocess_extracted_text_v1.task
     def task(entry):
         article = ArticleText.from_dict(try_load_json(read(entry.extracted_text_v1_path)))
         article.paragraphs_text = '' \
@@ -277,27 +247,25 @@ def preprocess_extracted_text():
                 lines.append(line + '. ')
 
         article.paragraphs_text = ''.join(lines)
-        write(entry.extracted_text_v1_path, json.dumps(dict(article)))
 
-        doc = nlp(article.paragraphs_text)
-        pass
+        write(entry.extracted_text_v1_path, json.dumps(dict(article)))
 
     with CnnArticleIndex() as index:
         entries = [
             entry for entry in index.values() if
-            entry.text_extraction_v1_was_successful
+            entry.reports[extract_text_from_article_v1.name].status == Report.SUCCESS
         ]
         log(f'Entries to preprocess extracted text from : {len(entries)}')
-        # run_concurrently([(task, entry, None) for entry in entries])
-        [task(entry) for entry in entries]
+        for entry in entries:
+            task(entry)
 
 
-@worker
+@worker()
 def pipeline():
     index_latest_rss_entries()
     scrape_latest_urls_from_index()
     extract_text_from_article_v1()
-    preprocess_extracted_text()
+    preprocess_extracted_text_v1()
 
 
 if __name__ == '__main__':
