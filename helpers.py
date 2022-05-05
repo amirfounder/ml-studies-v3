@@ -149,22 +149,5 @@ def get_entries_from_rss_url(idx, i, topic, url):
 
 
 if __name__ == '__main__':
-    # v2_index = try_load_json(read('data/index_v2.json'))
-    # with CnnArticleIndex() as v3_index:
-    #     for i, v2 in enumerate(list(v2_index.values())):
-    #         url = v2['url']
-    #         v3_index[url] = IndexEntry(
-    #             url=url,
-    #             reports={
-    #                 'scrape_urls_v1': Report(),
-    #                 'extract_text_v1': Report(),
-    #                 'extract_text_v2': Report(),
-    #                 'preprocess_extracted_text_v1': Report()
-    #             },
-    #             topic=None,
-    #             scraped_html_path=f'data/cnn_articles_html/{i + 1}.html',
-    #             extracted_text_v1_path=f'data/cnn_articles_extracted_texts_v1/{i + 1}.json',
-    #             extracted_text_v2_path=f'data/cnn_articles_extracted_texts_v2/{i + 1}.json'
-    #         )
     pass
 
