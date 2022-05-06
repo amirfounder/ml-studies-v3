@@ -1,9 +1,11 @@
 import re
 import time
+from typing import Generator
 
 import requests  # when JS rendering sites cause trouble -- skip to next news site. we will open up scraper service l8r
 import bs4
 import spacy
+from spacy.tokens import Token, Doc
 
 from helpers import *
 from models import *
@@ -20,7 +22,7 @@ def sync_index():
         if not entry.preprocessed_text_path:
             entry.preprocessed_text_path = 'data/cnn_articles_preprocessed_texts/' + str(i + 1) + '.txt'
 
-    with CnnArticleIndexManager() as index:
+    with cnn_article_index() as index:
         for i, entry in enumerate(index.values()):
             sync_preprocessed_texts(i, entry)
 
@@ -76,7 +78,7 @@ def index_rss_entries():
             filename=next_file_name
         )
 
-    with CnnArticleIndexManager() as index:
+    with cnn_article_index() as index:
         topics_urls = [*get_cnn_rss_urls(), *get_cnn_money_rss_urls()]
         topics_entries = []
 
@@ -105,7 +107,7 @@ def scrape_htmls():
         entry.scrape_was_successful = True
         time.sleep(1)
 
-    with CnnArticleIndexManager() as index:
+    with cnn_article_index() as index:
         entries_to_scrape = [
             entry for entry in index.values() if
             not entry[Worker.SCRAPE_HTMLS].has_been_attempted
@@ -127,7 +129,7 @@ def extract_texts():
         text = soup.text
         write(entry.extracted_text_path, text)
 
-    with CnnArticleIndexManager() as index:
+    with cnn_article_index() as index:
         entries = [
             entry for entry in index.values() if
             entry[Worker.SCRAPE_HTMLS].status == Report.SUCCESS and
@@ -140,17 +142,36 @@ def extract_texts():
 
 @worker(name=Worker.CLEAN_TEXTS)
 def clean_texts():
+    """
+    Retrieves extracted texts, cleans it and saves it as a matrix for NLP work (discovery, prediction, etc.).
+    :return: None
+    """
 
     @clean_texts.task
-    def clean_text(entry):
-        article = read(entry.extracted_text_path)
+    def clean_tokens(tokens: list[Token]) -> Generator[Token, None, None]:
 
-        article = re.sub(r'\n\s*\n', '\n', article)
-        article = re.sub(r'(http|https):\/\/\S+', '', article)
+        def is_valid(_token: Token):
+            return (
+                not _token.like_email and
+                not _token.like_url and
+                not _token.is_stop and
+                not _token.is_punct
+            )
 
-        write(entry.preprocessed_text_path, article)
+        for token in tokens:
+            if is_valid(token):
+                yield token
 
-    with CnnArticleIndexManager() as index:
+    @clean_texts.task
+    def clean_entry(entry):
+        doc = nlp(read(entry.extracted_text_path))
+
+        tokens = [token for token in doc]
+        tokens = clean_tokens(tokens)
+
+        write(entry.preprocessed_text_path, ''.join([t.text for t in tokens]))
+
+    with cnn_article_index() as index:
         entries = [
             entry for entry in index.values()
             if entry[Worker.EXTRACT_TEXTS].status == Report.SUCCESS
@@ -158,17 +179,4 @@ def clean_texts():
         ]
         log(f'Entries to preprocess extracted text from : {len(entries)}')
         for entry in entries:
-            clean_text(entry)
-
-
-@worker(name=Worker.PROCESS_TEXTS)
-def process_texts():
-
-    with CnnArticleIndexManager() as index:
-        entries = [
-            entry for entry in index.values()
-            if entry[Worker.CLEAN_TEXTS].status == Report.SUCCESS
-        ]
-
-        for entry in entries:
-            pass
+            clean_entry(entry)

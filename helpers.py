@@ -1,5 +1,6 @@
 import json
 import threading
+from contextlib import contextmanager
 from time import sleep
 from typing import Callable, Optional
 
@@ -9,9 +10,6 @@ from os.path import exists
 
 from models import IndexEntry, Report
 from enums import Worker as Worker
-
-LOGS_PATH = 'data/logs.log'
-CNN_ARTICLE_INDEX_PATH = 'data/index_v3.json'
 
 
 def read(path, mode='r', encoding='utf-8'):
@@ -31,11 +29,33 @@ def try_load_json(o):
         return {}
 
 
+def timed(func):
+    """
+    Decorator that returns a tuple of the result (or None), exception (or None), elapsed
+    :param func:
+    :return:
+    """
+    def inner(*args, **kwargs):
+        result = None
+        exception = None
+        start = datetime.now()
+
+        try:
+            result = func(*args, **kwargs)
+
+        except Exception as e:
+            exception = e
+
+        end = datetime.now()
+        return result, exception, end - start
+    return inner
+
+
 def log(message, level='INFO'):
     message = datetime.now().isoformat().ljust(30) + level.upper().ljust(10) + message
     print(message)
     message += '\n'
-    write(LOGS_PATH, message, mode='a')
+    write('data/logs.log', message, mode='a')
 
 
 def worker(name: str | Worker = None):
@@ -46,96 +66,83 @@ def worker(name: str | Worker = None):
 
 class _Worker:
     def __init__(self, func, name: Optional[str]):
-        self.name = name or func.__name__
-
-        def _worker(*args, **kwargs):
-            log(f'Started worker: {self.name}')
-
-            result = None
-            msg = []
-            lvl = None
-            start = datetime.now()
-
-            try:
-                result = func(*args, **kwargs)
-                msg.append('Finished worker')
-                lvl = 'success'
-
-            except Exception as e:
-                msg.append(f'Exception occurred {type(e).__name__} {str(e)}.')
-                lvl = 'error'
-
-            finally:
-                end = datetime.now()
-                msg.extend([f'Worker: {self.name}', f'Time Elapsed: {str(end - start)}'])
-                log('. '.join(msg), level=lvl)
-                return result
-
-        self._worker = _worker
+        self.worker_func = timed(func)
+        self.worker_name = name or func.__name__
 
     def __call__(self, *args, **kwargs):
-        return self._worker(*args, **kwargs)
+        return self.worker(*args, **kwargs)
+
+    def worker(self, *args, **kwargs):
+        log(f'Started worker: {self.worker_name}')
+        result, exception, elapsed = self.worker_func(*args, **kwargs)
+
+        if exception:
+            message = f'Exception occurred: {type(exception).__name__} {str(exception)}'
+            level = 'error'
+        else:
+            message = 'Finished worker'
+            level = 'success'
+
+        log('{}. Worker: {}. Time Elapsed: {}'.format(message, self.worker_name, str(elapsed)), level=level)
+        return result
 
     def task(self, func):
+        task_name = func.__name__
+        func = timed(func)
+
         def inner(*args, **kwargs):
-            # log(f'Started Task: {func.__name__}')
             entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)
             report = Report()
             report.open()
+            result, exception, elapsed = func(*args, **kwargs)
 
-            result = None
-            msg = []
-            lvl = None
-            start = datetime.now()
-
-            try:
-                result = func(*args, **kwargs)
+            if exception:
+                report.fail(str(exception))
+                message = f'Exception occurred: {type(exception).__name__} {str(exception)}'
+                level = 'error'
+            else:
                 report.success()
-                msg.append('Finished Task')
-                lvl = 'success'
+                message = 'Finished task'
+                level = 'success'
 
-            except Exception as e:
-                msg.append(f'Exception occurred: {type(e).__name__} {str(e)}')
-                lvl = 'error'
-                report.fail(str(e))
+            template = '{}. Worker: {}. Task: {}. Time Elapsed: {}'
+            log(template.format(message, self.worker_name, task_name, str(elapsed)), level=level)
 
-            finally:
-                end = datetime.now()
-                msg.extend([f'Worker: {self.name}', f'Task: {func.__name__}', f'Time Elapsed: {str(end - start)}'])
-                log('. '.join(msg), level=lvl)
+            if entry and isinstance(entry, IndexEntry) and self.worker_name in [w.value for w in Worker]:
+                entry.reports[self.worker_name] = report
 
-                if entry and isinstance(entry, IndexEntry) and self.name in [w.value for w in Worker]:
-                    entry.reports[self.name] = report
+            return result
 
-                return result
-
+        inner.__name__ = task_name
         return inner
 
 
-class CnnArticleIndexManager:
-    def __init__(self):
-        self.index: dict[str, IndexEntry | dict] = {}
+@contextmanager
+def cnn_article_index():
+    index = {}
+    path = 'data/index_v3.json'
+    exception_raised = False
 
-    def __enter__(self):
-        log('Reading index from file ...')
-        if exists(CNN_ARTICLE_INDEX_PATH):
-            for k, v in try_load_json(read(CNN_ARTICLE_INDEX_PATH)).items():
-                v['_index'] = self.index
-                self.index[k] = IndexEntry.load(v)
-        return self.index
+    try:
+        log('Reading index from file')
+        if exists(path):
+            for k, v in try_load_json(read(path)).items():
+                v['_index'] = index
+                index[k] = IndexEntry.load(v)
+        # TODO: yield a paginator
+        yield index
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type or exc_val or exc_tb:
-            log(f'Exception occurred closing CnnArticleIndex: {exc_type.__name__} {str(exc_val)}',
-                level='error')
-            return
+    except Exception as e:
+        log(f'Exception occurred with cnn index context manager: {type(e).__name__}: {str(e)}')
+        exception_raised = True
 
-        log('Saving index to file ...')
-        for k, v in self.index.items():
-            self.index[k] = dict(v)
+    finally:
+        if not exception_raised:
+            log('Saving index to file.')
+            for k, v in index.items():
+                index[k] = dict(v)
 
-        write(CNN_ARTICLE_INDEX_PATH, json.dumps(self.index))
-        return ['lol']
+            write(path, json.dumps(index))
 
 
 def run_concurrently(t_args_list: list[tuple[Callable, tuple, dict]], max_concurrent_threads=100):
