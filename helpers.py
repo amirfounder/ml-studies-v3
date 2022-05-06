@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from time import sleep
 from typing import Callable, Optional
 
-import feedparser
 from datetime import datetime
 from os.path import exists
 
@@ -170,10 +169,5 @@ def run_concurrently(t_args_list: list[tuple[Callable, tuple, dict]], max_concur
         t.join()
 
 
-def get_entries_from_rss_url(idx, i, topic, url):
-    idx[i] = (topic, feedparser.parse(url).entries)
-
-
 if __name__ == '__main__':
     pass
-
