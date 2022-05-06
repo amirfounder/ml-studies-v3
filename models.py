@@ -80,7 +80,6 @@ class IndexEntry(Model):
         return super().load(obj)
 
     def __getitem__(self, item):
-        # use dispatch from multipledispatch once this "switch" statements gets big enough
         if isinstance(item, Worker):
             return self.reports[item.value]
 
