@@ -1,79 +1,30 @@
-import json
 import threading
-from contextlib import contextmanager
 from time import sleep
 from typing import Callable, Optional
 
-from datetime import datetime
-from os.path import exists
-
 from models import IndexEntry, Report
-from enums import Worker as Worker
+from enums import WorkerNames, OutputPaths
+from commons import timeit, log
 
 
-def read(path, mode='r', encoding='utf-8'):
-    with open(path, mode, encoding=encoding) as f:
-        return f.read()
-
-
-def write(path, contents, mode='w', encoding='utf-8'):
-    with open(path, mode, encoding=encoding) as f:
-        f.write(contents)
-
-
-def try_load_json(o):
-    try:
-        return json.loads(o)
-    except Exception:
-        return {}
-
-
-def timed(func):
-    """
-    Decorator that returns a tuple of the result (or None), exception (or None), elapsed
-    :param func:
-    :return:
-    """
-    def inner(*args, **kwargs):
-        result = None
-        exception = None
-        start = datetime.now()
-
-        try:
-            result = func(*args, **kwargs)
-
-        except Exception as e:
-            exception = e
-
-        end = datetime.now()
-        return result, exception, end - start
-    return inner
-
-
-def log(message, level='INFO'):
-    message = datetime.now().isoformat().ljust(30) + level.upper().ljust(10) + message
-    print(message)
-    message += '\n'
-    write('data/logs.log', message, mode='a')
-
-
-def worker(name: str | Worker = None):
+def worker(name: str | WorkerNames = None):
     def inner(func):
-        return _Worker(func, name.value if isinstance(name, Worker) else name)
+        return _Worker(func, name.value if isinstance(name, WorkerNames) else name)
     return inner
 
 
 class _Worker:
-    def __init__(self, func, name: Optional[str]):
-        self.worker_func = timed(func)
-        self.worker_name = name or func.__name__
+    def __init__(self, func, name: Optional[WorkerNames]):
+        self.func = func
+        self.name = name or func.__name__
+        self.task_name = None
 
     def __call__(self, *args, **kwargs):
         return self.worker(*args, **kwargs)
 
     def worker(self, *args, **kwargs):
-        log(f'Started worker: {self.worker_name}')
-        result, exception, elapsed = self.worker_func(*args, **kwargs)
+        log(f'Started worker: {self.name}')
+        result, exception, elapsed = timeit(self.func)(*args, **kwargs)
 
         if exception:
             message = f'Exception occurred: {type(exception).__name__} {str(exception)}'
@@ -82,18 +33,22 @@ class _Worker:
             message = 'Finished worker'
             level = 'success'
 
-        log('{}. Worker: {}. Time Elapsed: {}'.format(message, self.worker_name, str(elapsed)), level=level)
+        log('{}. Worker: {}. Time Elapsed: {}'.format(message, self.name, str(elapsed)), level=level)
         return result
 
     def task(self, func):
-        task_name = func.__name__
-        func = timed(func)
+        self.task_name = func.__name__
 
         def inner(*args, **kwargs):
             entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)
-            report = Report()
+            if not entry:
+                raise Exception('Must pass "entry of class <IndexEntry>" to worker task')
+
+            output_path = OutputPaths[WorkerNames(self.name).name].value.format(entry.output_filename)
+            report = Report(output_path=output_path)
             report.open()
-            result, exception, elapsed = func(*args, **kwargs)
+
+            result, exception, elapsed = timeit(func)(*args, **kwargs)
 
             if exception:
                 report.fail(str(exception))
@@ -105,43 +60,32 @@ class _Worker:
                 level = 'success'
 
             template = '{}. Worker: {}. Task: {}. Time Elapsed: {}'
-            log(template.format(message, self.worker_name, task_name, str(elapsed)), level=level)
+            log(template.format(message, self.name, self.task_name, str(elapsed)), level=level)
 
-            if entry and isinstance(entry, IndexEntry) and self.worker_name in [w.value for w in Worker]:
-                entry.reports[self.worker_name] = report
+            if self.name in [w.value for w in WorkerNames]:
+                entry.reports[self.name] = report
 
             return result
 
-        inner.__name__ = task_name
+        inner.__name__ = self.task_name
         return inner
 
+    def subtask(self, func):
+        subtask_name = func.__name__
 
-@contextmanager
-def cnn_article_index():
-    index = {}
-    path = 'data/index_v3.json'
-    exception_raised = False
+        def inner(*args, **kwargs):
+            result, exception, elapsed = timeit(func)(*args, **kwargs)
+            if exception:
+                message = f'Exception occurred: {type(exception).__name__} {str(exception)}'
+                level = 'error'
+            else:
+                message = 'Finished subtask'
+                level = 'success'
 
-    try:
-        log('Reading index from file')
-        if exists(path):
-            for k, v in try_load_json(read(path)).items():
-                v['_index'] = index
-                index[k] = IndexEntry.load(v)
-        # TODO: yield a paginator
-        yield index
-
-    except Exception as e:
-        log(f'Exception occurred with cnn index context manager: {type(e).__name__}: {str(e)}')
-        exception_raised = True
-
-    finally:
-        if not exception_raised:
-            log('Saving index to file.')
-            for k, v in index.items():
-                index[k] = dict(v)
-
-            write(path, json.dumps(index))
+            template = '{}. Worker: {}. Task: {}. Subtask: {}. Time Elapsed: {}'
+            log(template.format(message, self.name, self.task_name, subtask_name, str(elapsed)), level=level)
+            return result
+        return inner
 
 
 def run_concurrently(t_args_list: list[tuple[Callable, tuple, dict]], max_concurrent_threads=100):
@@ -167,7 +111,3 @@ def run_concurrently(t_args_list: list[tuple[Callable, tuple, dict]], max_concur
 
     for t in ts:
         t.join()
-
-
-if __name__ == '__main__':
-    pass

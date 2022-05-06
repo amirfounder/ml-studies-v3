@@ -3,10 +3,10 @@ import time
 import schedule
 
 from pipeline import pipeline
-from workers import sync_index
+# from workers import sync_index
 
 if __name__ == '__main__':
-    sync_index()
+    # sync_index()
     pipeline()
     schedule.every(30).minutes.do(pipeline)
 

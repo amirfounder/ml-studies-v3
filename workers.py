@@ -1,15 +1,18 @@
 import re
 import time
+from os.path import exists
 from typing import Generator
 
-import requests  # when JS rendering sites cause trouble -- skip to next news site. we will open up scraper service l8r
+import requests
 import bs4
 import spacy
-from spacy.tokens import Token, Doc
+import feedparser
+from spacy.tokens import Token
 
-from helpers import *
-from models import *
-from enums import *
+from commons import write, read
+from helpers import worker, log
+from models import Index, IndexEntry, Report
+from enums import WorkerNames, OutputPaths, Status
 
 nlp = spacy.load('en_core_web_sm')
 
@@ -17,20 +20,18 @@ nlp = spacy.load('en_core_web_sm')
 @worker()
 def sync_index():
 
-    @sync_index.task
-    def sync_preprocessed_texts(_i, _entry):
-        if not entry.preprocessed_text_path:
-            entry.preprocessed_text_path = 'data/cnn_articles_preprocessed_texts/' + str(i + 1) + '.txt'
-
-    with cnn_article_index() as index:
-        for i, entry in enumerate(index.values()):
-            sync_preprocessed_texts(i, entry)
-
+    with Index() as index:
+        index: dict[str, IndexEntry]
+        for k, v in index.items():
+            for _k, _v in v.reports.items():
+                if not _v.output_path:
+                    output_path = OutputPaths[WorkerNames(_k).name].value.format(v.output_filename)
+                    _v.output_path = output_path
 
 @worker()
 def index_rss_entries():
 
-    @index_rss_entries.task
+    @index_rss_entries.subtask
     def get_cnn_rss_urls():
         path = 'data/cnn_rss_html.html'
         if not exists(path):
@@ -45,7 +46,7 @@ def index_rss_entries():
 
         return list(zip(topics, urls))
 
-    @index_rss_entries.task
+    @index_rss_entries.subtask
     def get_cnn_money_rss_urls():
         path = 'data/cnn_money_rss_html.html'
         if not exists(path):
@@ -67,18 +68,23 @@ def index_rss_entries():
 
         return list(zip(topics, urls))
 
-    @index_rss_entries.task
+    @index_rss_entries.subtask
     def index_entry(_index, _topic, _url):
         next_file_name = str(len(_index) + 1)
+
+        reports = {}
+        for n, v in [(n.name, n.value) for n in WorkerNames]:
+            reports[v] = Report(output_path=OutputPaths[n].value.format(next_file_name))
+
         _index[_url] = IndexEntry(
             _index=_index,
             url=_url,
             topic=_topic,
-            reports={w.value: {} for w in Worker},
-            filename=next_file_name
+            reports=reports,
+            output_filename=next_file_name
         )
 
-    with cnn_article_index() as index:
+    with Index() as index:
         topics_urls = [*get_cnn_rss_urls(), *get_cnn_money_rss_urls()]
         topics_entries = []
 
@@ -96,58 +102,51 @@ def index_rss_entries():
         log(f'New entries indexed: {count}')
 
 
-@worker(name=Worker.SCRAPE_HTMLS)
+@worker(name=WorkerNames.SCRAPE_HTMLS)
 def scrape_htmls():
 
     @scrape_htmls.task
-    def scrape_entry(entry):
+    def scrape_html(entry: IndexEntry):
         resp = requests.get(entry.url)
         resp.raise_for_status()
-        write(entry.scraped_html_path, resp.text)
-        entry.scrape_was_successful = True
+        write(entry[WorkerNames.SCRAPE_HTMLS].output_path, resp.text)
         time.sleep(1)
 
-    with cnn_article_index() as index:
+    with Index() as index:
         entries_to_scrape = [
             entry for entry in index.values() if
-            not entry[Worker.SCRAPE_HTMLS].has_been_attempted
-            # entry[Worker.SCRAPE_HTMLS].status == Report.FAILED
+            not entry[WorkerNames.SCRAPE_HTMLS].has_been_attempted
         ]
 
         log(f'Entries to scrape: {len(entries_to_scrape)}')
 
         for entry in entries_to_scrape:
-            scrape_entry(entry)
+            scrape_html(entry)
 
 
-@worker(name=Worker.EXTRACT_TEXTS)
+@worker(name=WorkerNames.EXTRACT_TEXTS)
 def extract_texts():
 
     @extract_texts.task
-    def extract_text(entry):
-        soup = bs4.BeautifulSoup(read(entry.scraped_html_path), 'html.parser')
-        text = soup.text
-        write(entry.extracted_text_path, text)
+    def extract_text(entry: IndexEntry):
+        soup = bs4.BeautifulSoup(read(entry[WorkerNames.SCRAPE_HTMLS].output_path), 'html.parser')
+        write(entry[WorkerNames.EXTRACT_TEXTS].output_path, soup.text)
 
-    with cnn_article_index() as index:
+    with Index() as index:
         entries = [
             entry for entry in index.values() if
-            entry[Worker.SCRAPE_HTMLS].status == Report.SUCCESS and
-            not entry[Worker.EXTRACT_TEXTS].has_been_attempted
+            entry[WorkerNames.SCRAPE_HTMLS].status == Status.SUCCESS
+            # not entry[WorkerNames.EXTRACT_TEXTS].status == Status.SUCCESS
         ]
         log(f'Entries to extract article text from (v2): {len(entries)}')
         for entry in entries:
             extract_text(entry)
 
 
-@worker(name=Worker.CLEAN_TEXTS)
-def clean_texts():
-    """
-    Retrieves extracted texts, cleans it and saves it as a matrix for NLP work (discovery, prediction, etc.).
-    :return: None
-    """
+@worker(name=WorkerNames.PROCESS_TEXTS)
+def process_texts():
 
-    @clean_texts.task
+    @process_texts.subtask
     def clean_tokens(tokens: list[Token]) -> Generator[Token, None, None]:
 
         def is_valid(_token: Token):
@@ -162,20 +161,18 @@ def clean_texts():
             if is_valid(token):
                 yield token
 
-    @clean_texts.task
-    def clean_entry(entry):
-        doc = nlp(read(entry.extracted_text_path))
-
+    @process_texts.task
+    def clean_entry(entry: IndexEntry):
+        doc = nlp(read(entry[WorkerNames.EXTRACT_TEXTS].output_path))
         tokens = [token for token in doc]
         tokens = clean_tokens(tokens)
+        write(entry[WorkerNames.PROCESS_TEXTS].output_path, ''.join([t.text for t in tokens]))
 
-        write(entry.preprocessed_text_path, ''.join([t.text for t in tokens]))
-
-    with cnn_article_index() as index:
+    with Index() as index:
         entries = [
-            entry for entry in index.values()
-            if entry[Worker.EXTRACT_TEXTS].status == Report.SUCCESS
-            and not entry[Worker.CLEAN_TEXTS].has_been_attempted
+            entry for entry in index.values() if
+            entry[WorkerNames.EXTRACT_TEXTS].status == Status.SUCCESS
+            # not entry[WorkerNames.PROCESS_TEXTS].status == Status.SUCCESS
         ]
         log(f'Entries to preprocess extracted text from : {len(entries)}')
         for entry in entries:
