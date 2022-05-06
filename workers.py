@@ -7,14 +7,28 @@ import spacy
 
 from helpers import *
 from models import *
+from enums import *
 
 nlp = spacy.load('en_core_web_sm')
 
 
-@worker(name='index_rss_urls')
-def index_latest_rss_entries():
+@worker()
+def sync_index():
 
-    @index_latest_rss_entries.task
+    @sync_index.task
+    def sync_preprocessed_texts(_i, _entry):
+        if not entry.preprocessed_text_path:
+            entry.preprocessed_text_path = 'data/cnn_articles_preprocessed_texts/' + str(i + 1) + '.txt'
+
+    with CnnArticleIndexManager() as index:
+        for i, entry in enumerate(index.values()):
+            sync_preprocessed_texts(i, entry)
+
+
+@worker()
+def index_rss_entries():
+
+    @index_rss_entries.task
     def get_cnn_rss_urls():
         path = 'data/cnn_rss_html.html'
         if not exists(path):
@@ -29,7 +43,7 @@ def index_latest_rss_entries():
 
         return list(zip(topics, urls))
 
-    @index_latest_rss_entries.task
+    @index_rss_entries.task
     def get_cnn_money_rss_urls():
         path = 'data/cnn_money_rss_html.html'
         if not exists(path):
@@ -51,26 +65,15 @@ def index_latest_rss_entries():
 
         return list(zip(topics, urls))
 
-    @index_latest_rss_entries.task
+    @index_rss_entries.task
     def index_entry(_index, _topic, _url):
         next_file_name = str(len(_index) + 1)
-
-        scraped_html_path = 'data/cnn_articles_html/' + next_file_name + '.html'
-        extracted_text_path = 'data/cnn_articles_extracted_texts/' + next_file_name + '.txt'
-        preprocessed_text_path = 'data/cnn_articles_preprocessed_texts/' + next_file_name + '.txt'
-
         _index[_url] = IndexEntry(
             _index=_index,
             url=_url,
             topic=_topic,
-            reports={
-                'scrape_urls_v1': None,
-                'extract_text_v2': None,
-                'preprocess_extracted_text_v1': None
-            },
-            scraped_html_path=scraped_html_path,
-            extracted_text_path=extracted_text_path,
-            preprocessed_text_path=preprocessed_text_path
+            reports={w.value: {} for w in Worker},
+            filename=next_file_name
         )
 
     with CnnArticleIndexManager() as index:
@@ -91,11 +94,11 @@ def index_latest_rss_entries():
         log(f'New entries indexed: {count}')
 
 
-@worker(name='scrape_urls_v1')
-def scrape_latest_urls_from_index():
+@worker(name=Worker.SCRAPE_HTMLS)
+def scrape_htmls():
 
-    @scrape_latest_urls_from_index.task
-    def task(entry):
+    @scrape_htmls.task
+    def scrape_entry(entry):
         resp = requests.get(entry.url)
         resp.raise_for_status()
         write(entry.scraped_html_path, resp.text)
@@ -105,20 +108,21 @@ def scrape_latest_urls_from_index():
     with CnnArticleIndexManager() as index:
         entries_to_scrape = [
             entry for entry in index.values() if
-            not entry.reports[scrape_latest_urls_from_index.name].has_been_attempted
+            not entry[Worker.SCRAPE_HTMLS].has_been_attempted
+            # entry[Worker.SCRAPE_HTMLS].status == Report.FAILED
         ]
 
         log(f'Entries to scrape: {len(entries_to_scrape)}')
 
         for entry in entries_to_scrape:
-            task(entry)
+            scrape_entry(entry)
 
 
-@worker(name='extract_text_v2')
-def extract_text_from_article_v2():
+@worker(name=Worker.EXTRACT_TEXTS)
+def extract_texts():
 
-    @extract_text_from_article_v2.task
-    def task(entry):
+    @extract_texts.task
+    def extract_text(entry):
         soup = bs4.BeautifulSoup(read(entry.scraped_html_path), 'html.parser')
         text = soup.text
         write(entry.extracted_text_path, text)
@@ -126,40 +130,46 @@ def extract_text_from_article_v2():
     with CnnArticleIndexManager() as index:
         entries = [
             entry for entry in index.values() if
-            not entry.reports[extract_text_from_article_v2.name].has_been_attempted
+            entry[Worker.SCRAPE_HTMLS].status == Report.SUCCESS and
+            not entry[Worker.EXTRACT_TEXTS].has_been_attempted
         ]
         log(f'Entries to extract article text from (v2): {len(entries)}')
         for entry in entries:
-            task(entry=entry)
+            extract_text(entry)
 
 
-@worker(name='preprocess_extracted_text_v1')
-def preprocess_extracted_text_v1():
+@worker(name=Worker.PREPROCESS_TEXTS)
+def preprocess_texts():
 
-    @preprocess_extracted_text_v1.task
-    def task(entry):
-        article = ArticleText.load(try_load_json(read(entry.extracted_text_path)))
-        article.paragraphs_text = '' \
-            .join(article.paragraphs or []) \
-            .removeprefix('\n') \
-            .replace('\n\n', '\n') \
-            .replace('  ', ' ') \
-            .removesuffix('\n')
+    @preprocess_texts.task
+    def preprocess_text(entry):
+        article = read(entry.extracted_text_path)
 
-        lines = []
-        for line in article.paragraphs_text.split('\n'):
-            if not line.endswith('.'):
-                lines.append(line + '. ')
+        article = re.sub(r'\n\s*\n', '\n', article)
+        article = re.sub(r'(http|https):\/\/\S+', '', article)
 
-        article.paragraphs_text = ''.join(lines)
-        write(entry.extracted_text_path, json.dumps(dict(article)))
+        write(entry.preprocessed_text_path, article)
 
     with CnnArticleIndexManager() as index:
         entries = [
-            entry for entry in index.values() if
-            entry.reports[extract_text_from_article_v2.name].status == Report.SUCCESS and
-            not entry.reports[preprocess_extracted_text_v1.name].has_been_attempted
+            entry for entry in index.values()
+            if entry[Worker.EXTRACT_TEXTS].status == Report.SUCCESS
+            and not entry[Worker.PREPROCESS_TEXTS].has_been_attempted
         ]
         log(f'Entries to preprocess extracted text from : {len(entries)}')
         for entry in entries:
-            task(entry=entry)
+            preprocess_text(entry)
+
+
+@worker(name=Worker.PROCESS_TEXTS)
+def process_texts():
+    pass
+
+    with CnnArticleIndexManager() as index:
+        entries = [
+            entry for entry in index.values()
+            if entry[Worker.PREPROCESS_TEXTS].status == Report.SUCCESS
+        ]
+
+        for entry in entries:
+            pass
