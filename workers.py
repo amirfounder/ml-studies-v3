@@ -138,11 +138,11 @@ def extract_texts():
             extract_text(entry)
 
 
-@worker(name=Worker.PREPROCESS_TEXTS)
-def preprocess_texts():
+@worker(name=Worker.CLEAN_TEXTS)
+def clean_texts():
 
-    @preprocess_texts.task
-    def preprocess_text(entry):
+    @clean_texts.task
+    def clean_text(entry):
         article = read(entry.extracted_text_path)
 
         article = re.sub(r'\n\s*\n', '\n', article)
@@ -154,21 +154,20 @@ def preprocess_texts():
         entries = [
             entry for entry in index.values()
             if entry[Worker.EXTRACT_TEXTS].status == Report.SUCCESS
-            and not entry[Worker.PREPROCESS_TEXTS].has_been_attempted
+            and not entry[Worker.CLEAN_TEXTS].has_been_attempted
         ]
         log(f'Entries to preprocess extracted text from : {len(entries)}')
         for entry in entries:
-            preprocess_text(entry)
+            clean_text(entry)
 
 
 @worker(name=Worker.PROCESS_TEXTS)
 def process_texts():
-    pass
 
     with CnnArticleIndexManager() as index:
         entries = [
             entry for entry in index.values()
-            if entry[Worker.PREPROCESS_TEXTS].status == Report.SUCCESS
+            if entry[Worker.CLEAN_TEXTS].status == Report.SUCCESS
         ]
 
         for entry in entries:
