@@ -4,22 +4,24 @@ import schedule
 
 from helpers import worker
 from workers import (
-    index_latest_rss_entries,
-    extract_text_from_article_v2,
-    scrape_latest_urls_from_index,
-    preprocess_extracted_text_v1
+    index_rss_entries,
+    extract_texts,
+    scrape_htmls,
+    preprocess_texts,
+    sync_index
 )
 
 
 @worker()
 def pipeline():
-    index_latest_rss_entries()
-    scrape_latest_urls_from_index()
-    extract_text_from_article_v2()
-    preprocess_extracted_text_v1()
+    index_rss_entries()
+    scrape_htmls()
+    extract_texts()
+    preprocess_texts()
 
 
 if __name__ == '__main__':
+    sync_index()
     pipeline()
     schedule.every(30).minutes.do(pipeline)
 

@@ -4,10 +4,11 @@ from time import sleep
 from typing import Callable, Optional
 
 import feedparser
-from datetime import datetime, timezone
+from datetime import datetime
 from os.path import exists
 
-from models import IndexEntry, Report, ReportType
+from models import IndexEntry, Report
+from enums import Worker as Worker
 
 LOGS_PATH = 'data/logs.log'
 CNN_ARTICLE_INDEX_PATH = 'data/index_v3.json'
@@ -37,13 +38,13 @@ def log(message, level='INFO'):
     write(LOGS_PATH, message, mode='a')
 
 
-def worker(name: str = None):
+def worker(name: str | Worker = None):
     def inner(func):
-        return Worker(func, name)
+        return _Worker(func, name.value if isinstance(name, Worker) else name)
     return inner
 
 
-class Worker:
+class _Worker:
     def __init__(self, func, name: Optional[str]):
         self.name = name or func.__name__
 
@@ -77,7 +78,7 @@ class Worker:
 
     def task(self, func):
         def inner(*args, **kwargs):
-            log(f'Started Task: {func.__name__}')
+            # log(f'Started Task: {func.__name__}')
             entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)
             report = Report()
             report.open()
@@ -103,7 +104,7 @@ class Worker:
                 msg.extend([f'Worker: {self.name}', f'Task: {func.__name__}', f'Time Elapsed: {str(end - start)}'])
                 log('. '.join(msg), level=lvl)
 
-                if entry and isinstance(entry, IndexEntry):
+                if entry and isinstance(entry, IndexEntry) and self.name in [w.value for w in Worker]:
                     entry.reports[self.name] = report
 
                 return result
@@ -125,7 +126,7 @@ class CnnArticleIndexManager:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type or exc_val or exc_tb:
-            log(f'Exception occurred closing CnnArticleIndex: {str(exc_type)} {str(exc_val)} - {str(exc_tb)}',
+            log(f'Exception occurred closing CnnArticleIndex: {exc_type.__name__} {str(exc_val)}',
                 level='error')
             return
 
@@ -167,6 +168,5 @@ def get_entries_from_rss_url(idx, i, topic, url):
 
 
 if __name__ == '__main__':
-    with CnnArticleIndexManager() as _index:
-        for _entry in _index.values():
-            _entry[ReportType.extract_text].reset()
+    pass
+

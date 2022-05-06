@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABC
 from datetime import datetime, timezone
-from enum import Enum
+from enums import Worker
 
 
 class Model(ABC):
@@ -60,21 +60,18 @@ class Report(Model, ABC):
         self.additional_data = {}
 
 
-class ReportType(Enum):
-    scrape_urls = 'scrape_urls_v1'
-    extract_text = 'extract_text_v2'
-
-
 class IndexEntry(Model):
     def __init__(self, **kwargs):
         self._index = kwargs['_index']
         self.reports: dict[str, Report] = kwargs['reports']
         self.url = kwargs['url']
         self.topic = kwargs['topic']
+        self.filename = kwargs['filename']
 
-        self.scraped_html_path = kwargs['scraped_html_path']
-        self.extracted_text_path = kwargs['extracted_text_path']
-        self.preprocessed_text_path = kwargs['preprocessed_text_path'] if 'preprocessed_text_path' in kwargs else ''
+        self.scraped_html_path = f'data/cnn_articles_html/{self.filename}.html'
+        self.extracted_text_path = f'data/cnn_articles_extracted_texts/{self.filename}.txt'
+        self.preprocessed_text_path = f'data/cnn_articles_preprocessed_texts/{self.filename}.txt'
+        self.processed_text_path = f'data/cnn_articles_processed_texts/{self.filename}.json'
 
     @classmethod
     def load(cls, obj: dict):
@@ -84,7 +81,7 @@ class IndexEntry(Model):
 
     def __getitem__(self, item):
         # use dispatch from multipledispatch once this "switch" statements gets big enough
-        if isinstance(item, ReportType):
+        if isinstance(item, Worker):
             return self.reports[item.value]
 
 
