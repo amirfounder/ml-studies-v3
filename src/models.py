@@ -2,29 +2,28 @@ from __future__ import annotations
 
 import json
 from abc import abstractmethod, ABC
-from datetime import datetime
+from contextlib import contextmanager
+from datetime import datetime, timedelta
 from enum import Enum
-from typing import Callable, Any
+from typing import Any, Callable, Generator
 
-from .enums import Status, ReportTypes
+from .enums import Status, ReportTypes, Paths
 from .commons import read, try_load_json, write, error, now
 
 
 class Model(ABC):
-    _iter_ignore_vals = {}
 
     @abstractmethod
     def __init__(self, **kwargs):
         ...
 
     def __iter__(self):
-        for k, v in self.__dict__.items():
-            if k.startswith('_'):
-                continue
-            if self in self._iter_ignore_vals and k in self._iter_ignore_vals[self]:
-                continue
+        items = [(x, getattr(self, x)) for x in dir(self) if not x.startswith('_') and not callable(getattr(self, x))]
+        for k, v in items:
             if isinstance(v, datetime):
                 v = v.isoformat()
+            if isinstance(v, timedelta):
+                v = str(v)
             if isinstance(v, Model):
                 v = dict(v)
             if isinstance(v, Enum):
@@ -43,42 +42,57 @@ class Model(ABC):
         return self
 
 
-class IndexManager(Model):
-    def __init__(self, domain: str = 'cnn', **kwargs):
-        self.domain = domain
-        self.kwargs = kwargs
-        self.path = 'data/index_v3.json'
+@contextmanager
+def get_index(domain: str = 'cnn') -> Generator[Index, None, None]:
+    path = str(Paths.CNN_ARTICLE_INDEX)
+    index = Index(path)
 
-    def __enter__(self):
-        self.index = Index(self.path, **self.kwargs)
-        return self.index
+    try:
+        yield index
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type or exc_val or exc_tb:
-            error(f'Exception occurred : {exc_type.__name__}: {str(exc_val)}')
-            return
+    except Exception as e:
+        error('Exception occurred. (Details in further logs)', e)
 
-        write(self.path, json.dumps(dict(self.index)))
+    finally:
+        write(path, json.dumps(dict(index)))
 
 
 class Index(Model):
     @property
     def entries_count(self):
-        return len(self.entries)
+        return len(self.get_entries())
 
-    def __init__(self, path: str, filter_callback: Callable = None):
+    def __init__(self, path: str):
         self.entries = {}
         self.rss_urls = {}
+        self._entries_have_been_loaded = False
+        self._rss_urls_have_been_loaded = False
+        self._index = try_load_json(read(path))
 
-        index = try_load_json(read(path))
+    def get_entries(self, filter_fn: Callable = None) -> dict:
+        if not self._entries_have_been_loaded:
+            for k, v in self._index.get('entries', {}).items():
+                self.entries[k] = IndexEntry(**v)
+            self._entries_have_been_loaded = True
 
-        for k, v in index['entries']:
-            if filter_callback and not filter_callback(v):
-                continue
-            self.entries[k] = IndexEntry(**v)
+        to_release = {}
 
-        for k, v in index['rss_urls']:
-            self.rss_urls[k] = RssUrl(**v)
+        if filter_fn:
+            for k, v in self.entries.items():
+                if filter_fn(v):
+                    to_release[k] = v
+        else:
+            to_release = self.entries
+
+        return to_release
+
+    def get_rss_urls(self) -> dict:
+        if not self._rss_urls_have_been_loaded:
+            for k, v in self._index.get('rss_entries', {}).items():
+                self.rss_urls[k] = RssUrl(**v)
+            self._rss_urls_have_been_loaded = True
+
+        return self.rss_urls
 
 
 class Report(Model):

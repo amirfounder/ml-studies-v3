@@ -31,9 +31,9 @@ def ml_studies_fn(func, component):
         info(f'Starting {component}: {func.__name__}')
         result, exception, elapsed = timeit(func)(*args, **kwargs)
         if exception:
-            error(f'Error occurred at {component}: {func.__name__} ({str(elapsed)})', exception)
+            error(f'Error occurred at {component}: {func.__name__} (Elapsed: {str(elapsed)})', exception)
         else:
-            success(f'Successfully completed pipeline: {func.__name__} ({str(elapsed)})')
+            success(f'Successfully completed {component}: {func.__name__} (Elapsed: {str(elapsed)})')
         return result, exception
     return inner
 

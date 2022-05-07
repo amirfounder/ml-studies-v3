@@ -36,5 +36,4 @@ def process_text(entry: IndexEntry):
     output_path = Paths.PROCESS_TEXTS_OUTPUT.format(filename=entry.filename)
     
     doc = nlp(read(input_path))
-    with open(output_path, 'wb') as f:
-        pickle.dump(doc, f)
+    write(output_path, contents=pickle.dumps(doc), mode='wb')

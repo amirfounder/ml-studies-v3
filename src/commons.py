@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from os.path import exists
-from os import environ
+from os import environ, makedirs
 from typing import Optional
 
 import spacy
@@ -14,12 +14,36 @@ nlp = spacy.load('en_core_web_sm')
 
 def read(path, mode='r', encoding='utf-8'):
     if exists(path):
-        with open(path, mode, encoding=encoding) as f:
+
+        kwargs = dict(
+            file=path,
+            mode=mode,
+            encoding=encoding
+        )
+
+        if mode.endswith('b'):
+            del kwargs['encoding']
+
+        with open(**kwargs) as f:
             return f.read()
 
 
 def write(path, contents, mode='w', encoding='utf-8'):
-    with open(path, mode, encoding=encoding) as f:
+    if not exists(path):
+        dir_path = '/'.join(path.split('/')[:-1])
+        if not exists(dir_path):
+            makedirs(dir_path)
+
+    kwargs = dict(
+        file=path,
+        mode=mode,
+        encoding=encoding
+    )
+
+    if mode.endswith('b'):
+        del kwargs['encoding']
+
+    with open(**kwargs) as f:
         f.write(contents)
 
 

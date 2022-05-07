@@ -18,6 +18,7 @@ class Paths(Enum):
     SCRAPE_HTMLS_OUTPUT = '{d}/cnn_articles_html/{filename}.html'
     EXTRACT_TEXTS_OUTPUT = '{d}/cnn_articles_extracted_texts/{filename}.json'
     PROCESS_TEXTS_OUTPUT = '{d}/cnn_articles_processed_texts/{filename}.pickle'
+    CNN_ARTICLE_INDEX = '{d}/index.json'
 
     def format(self, **kwargs):
         kwargs['d'] = data_directory_name()
