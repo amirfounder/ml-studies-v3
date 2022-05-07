@@ -1,5 +1,5 @@
 from src.commons import now, info, error, success
-from src.enums import Reports
+from src.enums import Reports, ReportTypes
 from src.models import IndexEntry, Report
 
 
@@ -54,7 +54,7 @@ def subtask(func):
     return ml_studies_fn(func, 'subtask')
 
 
-def log_report(name: Reports):
+def log_report(name: ReportTypes):
     def outer(func):
         def inner(*args, **kwargs):
             entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)

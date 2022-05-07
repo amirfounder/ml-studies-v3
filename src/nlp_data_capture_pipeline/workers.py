@@ -2,51 +2,53 @@ import feedparser
 
 from ..commons import info
 from ..decorators import worker
-from ..models import Index, IndexEntry, Report
-from ..enums import OutputPaths, Status, Reports
+from ..models import IndexEntry, IndexManager
+from ..enums import Status, ReportTypes
 from .tasks import scrape_html, extract_text, process_text
 from .subtasks import get_cnn_rss_urls, get_cnn_money_rss_urls
 
 
 @worker
 def index_rss_entries():
-    with Index() as index:
-        topics_urls = [*get_cnn_rss_urls()[0], *get_cnn_money_rss_urls()[0]]
+    with IndexManager('cnn') as index:
+        prev_entries_count = index.entries_count
+        entries = index.entries
+        
+        topics_urls = [
+            *get_cnn_rss_urls()[0],
+            *get_cnn_money_rss_urls()[0]
+        ]
+        
         topics_entries = []
-
         for topic, rss_url in topics_urls:
             topics_entries.append((topic, feedparser.parse(rss_url).entries))
 
-        count = 0
-        for topic, entries in topics_entries:
-            for entry in entries:
+        for topic, new_entries in topics_entries:
+            for entry in new_entries:
                 url = entry['link']
 
-                if url not in index and 'cnn.com' in url[:20]:
-                    next_file_name = str(len(index) + 1)
+                if url not in entries and 'cnn.com' in url[:20]:
+                    next_file_name = str(len(entries) + 1)
 
-                    reports = {}
-                    for n, v in [(r.name, r.value) for r in Reports]:
-                        reports[v] = Report(output_path=OutputPaths[n].value.format(next_file_name))
-
-                    index[url] = IndexEntry(
-                        _index=index,
+                    entries[url] = IndexEntry(
+                        _index=entries,
                         url=url,
                         topic=topic,
-                        reports=reports,
-                        output_filename=next_file_name
+                        filename=next_file_name
                     )
 
-        info(f'New entries indexed: {count}')
+        info(f'New entries indexed: {prev_entries_count - index.entries}')
 
 
 @worker
 def scrape_htmls():
 
-    with Index(filter_callback=lambda e: not e.reports[scrape_htmls.__name__].has_been_attempted) as index:
-        for entry in index.values():
-            r, e = scrape_html(entry)
-            entry.reports[scrape_htmls] = Report.open().close(r, e)
+    def filter_callback(_entry: IndexEntry):
+        return not _entry.reports[ReportTypes.SCRAPE_ARTICLES.value].has_been_attempted
+
+    with IndexManager(filter_callback=filter_callback) as index:
+        for entry in index.entries.values():
+            scrape_html(entry)
 
 
 @worker
@@ -54,14 +56,13 @@ def extract_texts():
 
     def filter_callback(_entry: IndexEntry):
         return (
-            _entry.reports[extract_texts.__name__].status == Status.SUCCESS and
-            not _entry.reports[extract_texts.__name__].has_been_attempted
+            _entry.reports[ReportTypes.EXTRACT_TEXTS.value].status == Status.SUCCESS and
+            not _entry.reports[ReportTypes.EXTRACT_TEXTS.value].has_been_attempted
         )
 
-    with Index(filter_callback=filter_callback) as index:
-        for entry in index.entries():
-            r, e = extract_text(entry)
-            entry.reports[extract_texts] = Report.open().close(r, e)
+    with IndexManager(filter_callback=filter_callback) as index:
+        for entry in index.entries.values():
+            extract_text(entry)
 
 
 @worker
@@ -69,11 +70,10 @@ def process_texts():
 
     def filter_callback(_entry: IndexEntry):
         return (
-            entry[WorkerNames.EXTRACT_TEXTS].status == Status.SUCCESS and
-            not entry[WorkerNames.PROCESS_TEXTS].status == Status.SUCCESS
+            entry.reports[ReportTypes.EXTRACT_TEXTS.value].status == Status.SUCCESS and
+            not entry.reports[ReportTypes.PROCESS_TEXTS.value].status == Status.SUCCESS
         )
 
-    with Index(filter_callback) as index:
-        for entry in index.values():
-            r, e = process_text(entry)
-            entry.reports[Reports.ProcessTexts] = Report.open().close(r, e)
+    with IndexManager(filter_callback=filter_callback) as index:
+        for entry in index.entries.values():
+            process_text(entry)

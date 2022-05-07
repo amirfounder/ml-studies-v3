@@ -4,16 +4,10 @@ import json
 from abc import abstractmethod, ABC
 from datetime import datetime
 from enum import Enum
-from typing import Callable
+from typing import Callable, Any
 
-from .enums import Status
+from .enums import Status, ReportTypes
 from .commons import read, try_load_json, write, error, now
-
-
-def iter_ignore(ignore_values):
-    def outer(cls):
-        return cls
-    return outer
 
 
 class Model(ABC):
@@ -21,14 +15,7 @@ class Model(ABC):
 
     @abstractmethod
     def __init__(self, **kwargs):
-        pass
-
-    @classmethod
-    def iter_ignore(cls, *args):
-        def outer(klass):
-            cls._iter_ignore_vals[klass] = [*args]
-            return klass
-        return outer
+        ...
 
     def __iter__(self):
         for k, v in self.__dict__.items():
@@ -71,22 +58,22 @@ class IndexManager(Model):
             error(f'Exception occurred : {exc_type.__name__}: {str(exc_val)}')
             return
 
-        write(self.index.path, json.dumps(dict(self.index)))
+        write(self.path, json.dumps(dict(self.index)))
 
 
-@Model.iter_ignore('path', 'filter_callback')
 class Index(Model):
+    @property
+    def entries_count(self):
+        return len(self.entries)
+
     def __init__(self, path: str, filter_callback: Callable = None):
-        self.path = path
-        self._filter_callback = filter_callback
         self.entries = {}
-        self.entries_count = 0
         self.rss_urls = {}
 
         index = try_load_json(read(path))
 
         for k, v in index['entries']:
-            if self.filter_callback and not self.filter_callback(v):
+            if filter_callback and not filter_callback(v):
                 continue
             self.entries[k] = IndexEntry(**v)
 
@@ -94,30 +81,7 @@ class Index(Model):
             self.rss_urls[k] = RssUrl(**v)
 
 
-    def __enter__(self):
-        index = try_load_json(read('data/index_v3.json')).items()
-
-        self.entries_count = index['entries_count']
-
-        for k, v in index['entries']:
-            if self.filter_callback and not self.filter_callback(v):
-                continue
-            self.entries[k] = IndexEntry(**v)
-
-        for k, v in index['rss_urls']:
-            self.rss_urls[k] = RssUrl(**v)
-
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type or exc_val or exc_tb:
-            error(f'Exception occurred : {exc_type.__name__}: {str(exc_val)}')
-            return
-
-        write('data/index_v3.json', json.dumps(dict(self)))
-
-
-class Report(Model, ABC):
+class Report(Model):
     def __init__(self, **kwargs):
         status = kwargs.get('status')
         self.status = status if isinstance(status, Status) else Status(status) if isinstance(status, str) else None
@@ -138,24 +102,24 @@ class Report(Model, ABC):
         self.last_attempt_timestamp = now()
         return self
 
-    def close(self, result, exception):
+    def close(self, result: Any, exception: Exception):
         self.end = now()
         self.elapsed = self.end - self.start
         if exception:
-            self.record_failure(exception)
+            self.record_failure(str(exception))
         else:
             self.record_success(result)
         return self
 
-    def record_failure(self, error: str):
+    def record_failure(self, _error: str):
         self.end = now()
         self.elapsed = self.end - self.start
         self.status = Status.FAILURE
-        self.error = error
+        self.error = _error
         self.result = None
         return self
 
-    def record_success(self, result):
+    def record_success(self, result: Any):
         self.end = now()
         self.elapsed = self.end - self.start
         self.status = Status.SUCCESS
@@ -173,8 +137,11 @@ class RssUrl(Model):
 
 class IndexEntry(Model):
     def __init__(self, **kwargs):
-        self.output_filename = kwargs['output_filename']
-        self.reports: dict[str, Report] = {k: (v if isinstance(v, Report) else Report(**v)) for k, v in kwargs['reports'].items()}
+        self.filename = kwargs['filename']
+        self.reports = {k: (v if isinstance(v, Report) else Report(**v)) for k, v in kwargs.get('reports', {}).items()}
+        for t in ReportTypes:
+            if t.value not in self.reports:
+                self.reports[t.value] = Report()
         self.url = kwargs['url']
         self.topic = kwargs['topic']
-        self.output_filename = kwargs['output_filename']
+        self.filename = kwargs['filename']
