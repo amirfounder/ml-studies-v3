@@ -1,12 +1,6 @@
 from enum import Enum
 
 
-class Reports(Enum):
-    ScrapeHtml = 'scrape_htmls'
-    ExtractTexts = 'extract_texts'
-    ProcessTexts = 'process_texts'
-
-
 class ReportTypes(Enum):
     SCRAPE_ARTICLES = 'scrape_htmls'
     EXTRACT_TEXTS = 'extract_texts'

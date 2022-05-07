@@ -1,5 +1,5 @@
 from src.commons import now, info, error, success
-from src.enums import Reports, ReportTypes
+from src.enums import ReportTypes
 from src.models import IndexEntry, Report
 
 
