@@ -10,14 +10,31 @@ from .enums import Status
 from .commons import read, try_load_json, write, error, now
 
 
+def iter_ignore(ignore_values):
+    def outer(cls):
+        return cls
+    return outer
+
+
 class Model(ABC):
+    _iter_ignore_vals = {}
+
     @abstractmethod
     def __init__(self, **kwargs):
         pass
 
+    @classmethod
+    def iter_ignore(cls, *args):
+        def outer(klass):
+            cls._iter_ignore_vals[klass] = [*args]
+            return klass
+        return outer
+
     def __iter__(self):
         for k, v in self.__dict__.items():
             if k.startswith('_'):
+                continue
+            if self in self._iter_ignore_vals and k in self._iter_ignore_vals[self]:
                 continue
             if isinstance(v, datetime):
                 v = v.isoformat()
@@ -39,22 +56,14 @@ class Model(ABC):
         return self
 
 
-class Index(Model):
-    def __init__(self, filter_callback: Callable = None):
-        self.filter_callback = filter_callback
-        self.index: dict[str, IndexEntry | dict] = {}
-
-    def __getitem__(self, item):
-        return self.index[item]
-
-    def __setitem__(self, key, value):
-        self.index[key] = value
+class IndexManager(Model):
+    def __init__(self, domain: str = 'cnn', **kwargs):
+        self.domain = domain
+        self.kwargs = kwargs
+        self.path = 'data/index_v3.json'
 
     def __enter__(self):
-        for k, v in try_load_json(read('data/index_v3.json') or {}).items():
-            if self.filter_callback and not self.filter_callback(v):
-                continue
-            self.index[k] = IndexEntry(**v)
+        self.index = Index(self.path, **self.kwargs)
         return self.index
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -62,10 +71,50 @@ class Index(Model):
             error(f'Exception occurred : {exc_type.__name__}: {str(exc_val)}')
             return
 
-        for k, v in self.index.items():
-            self.index[k] = dict(v)
+        write(self.index.path, json.dumps(dict(self.index)))
 
-        write('data/index_v3.json', json.dumps(self.index))
+
+@Model.iter_ignore('path', 'filter_callback')
+class Index(Model):
+    def __init__(self, path: str, filter_callback: Callable = None):
+        self.path = path
+        self._filter_callback = filter_callback
+        self.entries = {}
+        self.entries_count = 0
+        self.rss_urls = {}
+
+        index = try_load_json(read(path))
+
+        for k, v in index['entries']:
+            if self.filter_callback and not self.filter_callback(v):
+                continue
+            self.entries[k] = IndexEntry(**v)
+
+        for k, v in index['rss_urls']:
+            self.rss_urls[k] = RssUrl(**v)
+
+
+    def __enter__(self):
+        index = try_load_json(read('data/index_v3.json')).items()
+
+        self.entries_count = index['entries_count']
+
+        for k, v in index['entries']:
+            if self.filter_callback and not self.filter_callback(v):
+                continue
+            self.entries[k] = IndexEntry(**v)
+
+        for k, v in index['rss_urls']:
+            self.rss_urls[k] = RssUrl(**v)
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type or exc_val or exc_tb:
+            error(f'Exception occurred : {exc_type.__name__}: {str(exc_val)}')
+            return
+
+        write('data/index_v3.json', json.dumps(dict(self)))
 
 
 class Report(Model, ABC):
@@ -113,6 +162,13 @@ class Report(Model, ABC):
         self.result = result
         self.error = None
         return self
+
+
+class RssUrl(Model):
+    def __init__(self, **kwargs):
+        self.topic = kwargs.get('topic')
+        self.url = kwargs.get('url')
+        self.site = kwargs.get('domain')
 
 
 class IndexEntry(Model):
