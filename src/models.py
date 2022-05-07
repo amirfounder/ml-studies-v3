@@ -4,8 +4,9 @@ import json
 from abc import abstractmethod, ABC
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Callable
 
-from enums import WorkerNames, Status, OutputPaths
+from enums import WorkerNames, Status
 from commons import read, try_load_json, write, log
 
 
@@ -34,7 +35,8 @@ class Model(ABC):
 
 
 class Index(Model):
-    def __init__(self):
+    def __init__(self, filter_callback: Callable = None):
+        self.filter_callback = filter_callback
         self.index: dict[str, IndexEntry | dict] = {}
 
     def __getitem__(self, item):
@@ -45,7 +47,9 @@ class Index(Model):
 
     def __enter__(self):
         for k, v in try_load_json(read('data/index_v3.json') or {}).items():
-            self.index[k] = IndexEntry(**v, _index=self.index)
+            if self.filter_callback and not self.filter_callback(v):
+                continue
+            self.index[k] = IndexEntry(**v)
         return self.index
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -91,7 +95,6 @@ class Report(Model, ABC):
 
 class IndexEntry(Model):
     def __init__(self, **kwargs):
-        self._index = kwargs['_index']
         self.output_filename = kwargs['output_filename']
         self.reports = {k: (v if isinstance(v, Report) else Report(**v)) for k, v in kwargs['reports'].items()}
         self.url = kwargs['url']

@@ -1,6 +1,7 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from os.path import exists
+from typing import Optional
 
 
 def read(path, mode='r', encoding='utf-8'):
@@ -21,21 +22,8 @@ def try_load_json(o):
         return {}
 
 
-def timeit(func):
-    def inner(*args, **kwargs):
-        result = None
-        exception = None
-        start = datetime.now()
-
-        try:
-            result = func(*args, **kwargs)
-
-        except Exception as e:
-            exception = e
-
-        end = datetime.now()
-        return result, exception, end - start
-    return inner
+def now():
+    return datetime.now(timezone.utc)
 
 
 def log(message, level='info'):
@@ -43,3 +31,17 @@ def log(message, level='info'):
     print(message)
     message += '\n'
     write('data/logs.log', message, mode='a')
+
+
+def info(message):
+    log(message, 'info')
+
+
+def error(message: str, exception: Optional[Exception] = None):
+    if exception:
+        message = message.strip().removesuffix('.') + f'. Exception: {type(exception).__name__} - {str(exception)}'
+    log(message, 'error')
+
+
+def success(message):
+    log(message, 'success')

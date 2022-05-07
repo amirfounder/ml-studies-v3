@@ -7,7 +7,7 @@ from enums import WorkerNames, OutputPaths
 from commons import timeit, log
 
 
-def worker(name: str | WorkerNames = None):
+def worker(name: str | WorkerNames = None, **kwargs):
     def inner(func):
         return _Worker(func, name.value if isinstance(name, WorkerNames) else name)
     return inner
@@ -59,8 +59,8 @@ class _Worker:
                 message = 'Finished task'
                 level = 'success'
 
-            template = '{}. Worker: {}. Task: {}. Time Elapsed: {}'
-            log(template.format(message, self.name, self.task_name, str(elapsed)), level=level)
+            template = '{}. Worker: {}. Task: {}. Output: {}. Time Elapsed: {}'
+            log(template.format(message, self.name, self.task_name, report.output_path, str(elapsed)), level=level)
 
             if self.name in [w.value for w in WorkerNames]:
                 entry.reports[self.name] = report
