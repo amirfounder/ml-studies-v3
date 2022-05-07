@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timezone
 from os.path import exists
+from os import environ
 from typing import Optional
 
 import spacy
@@ -30,7 +31,19 @@ def now():
     return datetime.now(timezone.utc)
 
 
-def log(message, level='info'):
+def is_prod_env():
+    return environ.get('ML_STUDIES_ENV') == 'prod'
+
+
+def is_test_env():
+    return environ.get('ML_STUDIES_ENV') == 'test'
+
+
+def is_dev_env():
+    return environ.get('ML_STUDIES_ENV') == 'dev'
+
+
+def _log(message, level='info'):
     message = datetime.now().isoformat().ljust(30) + level.upper().ljust(10) + message
     print(message)
     message += '\n'
@@ -38,14 +51,14 @@ def log(message, level='info'):
 
 
 def info(message):
-    log(message, 'info')
+    _log(message, 'info')
 
 
 def error(message: str, exception: Optional[Exception] = None):
     if exception:
         message = message.strip().removesuffix('.') + f'. Exception: {type(exception).__name__} - {str(exception)}'
-    log(message, 'error')
+    _log(message, 'error')
 
 
 def success(message):
-    log(message, 'success')
+    _log(message, 'success')

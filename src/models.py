@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Callable
 
 from .enums import Status
-from .commons import read, try_load_json, write, log, now
+from .commons import read, try_load_json, write, error, now
 
 
 class Model(ABC):
@@ -59,7 +59,7 @@ class Index(Model):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type or exc_val or exc_tb:
-            log('Exception occurred', level='error')
+            error(f'Exception occurred : {exc_type.__name__}: {str(exc_val)}')
             return
 
         for k, v in self.index.items():
