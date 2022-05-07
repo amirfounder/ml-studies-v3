@@ -4,7 +4,8 @@ from ..commons import info
 from ..decorators import worker
 from ..models import Index, IndexEntry, Report
 from ..enums import WorkerNames, OutputPaths, Status, Reports
-from .tasks import get_cnn_rss_urls, get_cnn_money_rss_urls, scrape_html, extract_text, process_text
+from .tasks import scrape_html, extract_text, process_text
+from .subtasks import get_cnn_rss_urls, get_cnn_money_rss_urls
 
 
 @worker

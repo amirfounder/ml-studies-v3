@@ -8,7 +8,6 @@ import spacy
 nlp = spacy.load('en_core_web_sm')
 
 
-
 def read(path, mode='r', encoding='utf-8'):
     if exists(path):
         with open(path, mode, encoding=encoding) as f:

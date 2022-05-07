@@ -1,4 +1,6 @@
 from src.commons import now, info, error, success
+from src.enums import Reports
+from src.models import IndexEntry, Report
 
 
 def try_catch(func):
@@ -24,29 +26,40 @@ def timeit(func):
     return inner
 
 
-def ml_studies_decorator(func, name, component):
+def ml_studies_fn(func, component):
     def inner(*args, **kwargs):
-        info(f'Starting {component}: {name}')
+        info(f'Starting {component}: {func.__name__}')
         result, exception, elapsed = timeit(func)(*args, **kwargs)
         if exception:
-            error(f'Error occurred at {component}: {name} ({str(elapsed)})', exception)
+            error(f'Error occurred at {component}: {func.__name__} ({str(elapsed)})', exception)
         else:
-            success(f'Successfully completed pipeline: {name} ({str(elapsed)})')
+            success(f'Successfully completed pipeline: {func.__name__} ({str(elapsed)})')
         return result, exception
     return inner
 
 
 def pipeline(func):
-    return ml_studies_decorator(func, func.__name__, 'pipeline')
+    return ml_studies_fn(func, 'pipeline')
 
 
 def worker(func):
-    return ml_studies_decorator(func, func.__name__, 'worker')
+    return ml_studies_fn(func, 'worker')
 
 
 def task(func):
-    return ml_studies_decorator(func, func.__name__, 'task')
+    return ml_studies_fn(func, 'task')
 
 
 def subtask(func):
-    return ml_studies_decorator(func, func.__name__, 'subtask')
+    return ml_studies_fn(func, 'subtask')
+
+
+def log_report(name: Reports):
+    def outer(func):
+        def inner(*args, **kwargs):
+            entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)
+            r, e = func(*args, **kwargs)
+            entry.reports[name.value] = Report.open().close(r, e)
+            return r, e
+        return inner
+    return outer
