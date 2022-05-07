@@ -6,6 +6,9 @@ from typing import Optional
 
 import spacy
 
+from .env import is_env_prod, is_env_dev
+from .enums import Paths
+
 nlp = spacy.load('en_core_web_sm')
 
 
@@ -31,23 +34,15 @@ def now():
     return datetime.now(timezone.utc)
 
 
-def is_prod_env():
-    return environ.get('ML_STUDIES_ENV') == 'prod'
+def _log(message, level: str = 'info', env: str = None):
+    env = (env or ('prod' if is_env_prod() else 'dev' if is_env_dev() else '--')).upper().ljust(10)
+    level = level.upper().ljust(10)
+    timestamp = now().isoformat().ljust(40)
 
-
-def is_test_env():
-    return environ.get('ML_STUDIES_ENV') == 'test'
-
-
-def is_dev_env():
-    return environ.get('ML_STUDIES_ENV') == 'dev'
-
-
-def _log(message, level='info'):
-    message = datetime.now().isoformat().ljust(30) + level.upper().ljust(10) + message
+    message = timestamp + env + level + message
     print(message)
     message += '\n'
-    write('data/logs.log', message, mode='a')
+    write(str(Paths.LOGGING), message, mode='a')
 
 
 def info(message):
@@ -62,3 +57,13 @@ def error(message: str, exception: Optional[Exception] = None):
 
 def success(message):
     _log(message, 'success')
+
+
+def set_env_to_prod():
+    info('Setting working environment to prod')
+    environ['ML_STUDIES_ENV'] = 'prod'
+
+
+def set_env_to_dev():
+    info('Setting working environment to dev')
+    environ['ML_STUDIES_ENV'] = 'dev'
