@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from abc import abstractmethod, ABC
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from typing import Callable
 
-from enums import WorkerNames, Status
-from commons import read, try_load_json, write, log
+from .enums import WorkerNames, Status
+from .commons import read, try_load_json, write, log, now
 
 
 class Model(ABC):
@@ -32,6 +32,11 @@ class Model(ABC):
                 for i, _v in enumerate(v):
                     v[i] = dict(v or {})
             yield k, v
+
+    def set(self, **kwargs):
+        for k, v in kwargs:
+            setattr(self, k, v)
+        return self
 
 
 class Index(Model):
@@ -73,30 +78,37 @@ class Report(Model, ABC):
         self.additional_data = kwargs.get('additional_data', {})
         self.output_path = kwargs.get('output_path')
 
-    def open(self):
+    @classmethod
+    def open(cls):
+        self = cls()
         self.has_been_attempted = True
-        self.last_attempt_timestamp = datetime.now(timezone.utc)
+        self.last_attempt_timestamp = now()
+        return self
 
-    def fail(self, error: str):
+    def close(self, result, exception):
+        if exception:
+            self.record_failure(exception)
+        else:
+            self.record_success(result)
+        return self
+
+    def record_failure(self, error: str):
         self.status = Status.FAILURE
         self.error = error
+        self.result = None
+        return self
 
-    def success(self):
+    def record_success(self, result):
         self.status = Status.SUCCESS
+        self.result = result
         self.error = None
-
-    def reset(self):
-        self.status = None
-        self.error = None
-        self.last_attempt_timestamp = None
-        self.has_been_attempted = False
-        self.additional_data = {}
+        return self
 
 
 class IndexEntry(Model):
     def __init__(self, **kwargs):
         self.output_filename = kwargs['output_filename']
-        self.reports = {k: (v if isinstance(v, Report) else Report(**v)) for k, v in kwargs['reports'].items()}
+        self.reports: dict[str, Report] = {k: (v if isinstance(v, Report) else Report(**v)) for k, v in kwargs['reports'].items()}
         self.url = kwargs['url']
         self.topic = kwargs['topic']
         self.output_filename = kwargs['output_filename']

@@ -3,6 +3,11 @@ from datetime import datetime, timezone
 from os.path import exists
 from typing import Optional
 
+import spacy
+
+nlp = spacy.load('en_core_web_sm')
+
+
 
 def read(path, mode='r', encoding='utf-8'):
     if exists(path):

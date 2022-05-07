@@ -1,5 +1,5 @@
-from decorators import pipeline
-from workers import (
+from ..decorators import pipeline
+from .workers import (
     index_rss_entries,
     extract_texts,
     scrape_htmls,
@@ -8,7 +8,7 @@ from workers import (
 
 
 @pipeline
-def scrape_latest_news_articles():
+def nlp_data_capture_pipeline():
     index_rss_entries()  # Indexes Latest RSS Entries
     scrape_htmls()  # Scrapes the HTML files of the URLs just scraped
     extract_texts()  # Extracts text from HTML
