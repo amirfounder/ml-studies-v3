@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Callable
 
-from .enums import WorkerNames, Status
+from .enums import Status
 from .commons import read, try_load_json, write, log, now
 
 
@@ -72,6 +72,9 @@ class Report(Model, ABC):
     def __init__(self, **kwargs):
         status = kwargs.get('status')
         self.status = status if isinstance(status, Status) else Status(status) if isinstance(status, str) else None
+        self.start = kwargs.get('start')
+        self.end = kwargs.get('end')
+        self.elapsed = kwargs.get('elapsed')
         self.error = kwargs.get('error')
         self.has_been_attempted = kwargs.get('has_been_attempted', False)
         self.last_attempt_timestamp = kwargs.get('last_attempt_timestamp')
@@ -81,11 +84,14 @@ class Report(Model, ABC):
     @classmethod
     def open(cls):
         self = cls()
+        self.start = now()
         self.has_been_attempted = True
         self.last_attempt_timestamp = now()
         return self
 
     def close(self, result, exception):
+        self.end = now()
+        self.elapsed = self.end - self.start
         if exception:
             self.record_failure(exception)
         else:
@@ -93,12 +99,16 @@ class Report(Model, ABC):
         return self
 
     def record_failure(self, error: str):
+        self.end = now()
+        self.elapsed = self.end - self.start
         self.status = Status.FAILURE
         self.error = error
         self.result = None
         return self
 
     def record_success(self, result):
+        self.end = now()
+        self.elapsed = self.end - self.start
         self.status = Status.SUCCESS
         self.result = result
         self.error = None
@@ -112,7 +122,3 @@ class IndexEntry(Model):
         self.url = kwargs['url']
         self.topic = kwargs['topic']
         self.output_filename = kwargs['output_filename']
-
-    def __getitem__(self, item):
-        if isinstance(item, WorkerNames):
-            return self.reports[item.value]

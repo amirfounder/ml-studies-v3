@@ -2,13 +2,12 @@ import time
 
 import schedule
 
-from pipeline import pipeline
-# from workers import sync_index
+from nlp_data_capture_pipeline.pipeline import nlp_data_capture_pipeline
+
 
 if __name__ == '__main__':
-    # sync_index()
-    pipeline()
-    schedule.every(30).minutes.do(pipeline)
+    nlp_data_capture_pipeline()
+    schedule.every(30).minutes.do(nlp_data_capture_pipeline)
 
     while True:
         schedule.run_pending()
