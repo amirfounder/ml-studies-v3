@@ -48,3 +48,4 @@ This function should also (like a task) implement thread / process safe protocol
 
 - parameter to allow index to flush regularly
 - custom thread to return values and store them into a pool of results that is retrieved by the `join_threads` fn
+- file locks
