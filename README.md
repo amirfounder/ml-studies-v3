@@ -1,4 +1,4 @@
-# ML Studies
+# ML Studies (for users)
 
 ## Usage
 
@@ -10,6 +10,20 @@ python main.py --prod
 
 No setup needed (I think).
 This program should build out any additional directory structure as needed if it doesn't already exist.
+
+# ML Studies (for devs)
+
+## Design
+
+### Design Pattern
+The primary design pattern used here is the pipe and filter design patter.
+Every pipeline is a... pipeline and every worker is a filter.
+I added tasks and subtasks which are used for concurrency operations.
+*(See the `Decorators` section below for more details)*
+
+### Programming Paradigm
+The primary paradigm used here is functional programming.
+OOP is ONLY used for modeling data in this project.
 
 ## Entities:
 

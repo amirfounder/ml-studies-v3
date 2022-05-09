@@ -60,10 +60,10 @@ def now():
 
 
 def _log(message, level: str = 'info'):
-    _env = 'ENV: ' + env().upper().ljust(10)
+    _env = 'ENV: ' + str(env()).upper().ljust(10)
     level = level.upper().ljust(10)
-    timestamp = now().isoformat().ljust(40)
-    thread_name = 'THREAD: ' + current_thread().name.ljust(30)
+    timestamp = now().isoformat().ljust(36)
+    thread_name = 'THREAD: ' + current_thread().name.ljust(25)
 
     message = timestamp + _env + thread_name + level + message
     print(message)

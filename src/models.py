@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Any, Callable, Generator
 
 from .enums import Status, ReportTypes, Paths
-from .commons import read, try_load_json, write, error, now
+from .commons import read, try_load_json, write, error
 
 
 class Model(ABC):
@@ -43,15 +43,15 @@ class Model(ABC):
 
 
 @contextmanager
-def get_index(domain: str = 'cnn') -> Generator[Index, None, None]:
-    path = str(Paths.CNN_ARTICLE_INDEX)
+def get_index() -> Generator[Index, None, None]:
+    path = str(Paths.ARTICLES_INDEX)
     index = Index(path)
 
     try:
         yield index
 
     except Exception as e:
-        error('Exception occurred. (Details in further logs)', e)
+        error('Exception occurred. (There are likely details in further logs ...)', e)
 
     finally:
         write(path, json.dumps(dict(index)))
@@ -106,36 +106,30 @@ class Report(Model):
         self.has_been_attempted = kwargs.get('has_been_attempted', False)
         self.last_attempt_timestamp = kwargs.get('last_attempt_timestamp')
         self.additional_data = kwargs.get('additional_data', {})
-        self.output_path = kwargs.get('output_path')
 
     @classmethod
-    def open(cls):
-        self = cls()
-        self.start = now()
+    def open(cls, **kwargs):
+        self = cls(**kwargs)
         self.has_been_attempted = True
-        self.last_attempt_timestamp = now()
         return self
 
-    def close(self, result: Any, exception: Exception):
-        self.end = now()
-        self.elapsed = self.end - self.start
+    def close(self, result: Any, exception: Exception, **kwargs):
         if exception:
-            self.record_failure(str(exception))
+            self._record_failure(str(exception))
         else:
-            self.record_success(result)
+            self._record_success(result)
+        for k, v in kwargs.items():
+            if hasattr(self, k):
+                setattr(self, k, v)
         return self
 
-    def record_failure(self, _error: str):
-        self.end = now()
-        self.elapsed = self.end - self.start
+    def _record_failure(self, _error: str):
         self.status = Status.FAILURE
         self.error = _error
         self.result = None
         return self
 
-    def record_success(self, result: Any):
-        self.end = now()
-        self.elapsed = self.end - self.start
+    def _record_success(self, result: Any):
         self.status = Status.SUCCESS
         self.result = result
         self.error = None
@@ -162,3 +156,4 @@ class IndexEntry(Model):
         self.url = kwargs['url']
         self.topic = kwargs['topic']
         self.filename = kwargs['filename']
+        self.source = kwargs.get('source', 'cnn')

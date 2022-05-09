@@ -1,7 +1,7 @@
 from os import environ
 
 
-def env(default: str = '--'):
+def env(default: str = None):
     return environ.get('ML_STUDIES_ENV', default)
 
 

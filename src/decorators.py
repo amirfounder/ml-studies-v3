@@ -26,20 +26,22 @@ def timeit(func):
         start = now()
         result, exception = try_catch(func)(*args, **kwargs)
         end = now()
-        return result, exception, end - start
+        return result, exception, (start, end, end - start)
     return inner
 
 
 def ml_studies_fn(func, component, **decorator_kwargs):
     def inner(*args, **kwargs):
-        if not decorator_kwargs.get('silent_start', True):
+        if not decorator_kwargs.get('silent_start', False):
             info(f'Starting {component}: {func.__name__}')
-        result, exception, elapsed = timeit(func)(*args, **kwargs)
+        result, exception, (start, end, elapsed) = timeit(func)(*args, **kwargs)
         if exception:
-            error(f'Error occurred at {component}: {func.__name__} (Elapsed: {str(elapsed)})', exception)
+            if not decorator_kwargs.get('silent_failure', False):
+                error(f'Error occurred at {component}: {func.__name__} (Elapsed: {str(elapsed)})', exception)
         else:
-            success(f'Successfully completed {component}: {func.__name__} (Elapsed: {str(elapsed)})')
-        return result, exception
+            if not decorator_kwargs.get('silent_success', False):
+                success(f'Successfully completed {component}: {func.__name__} (Elapsed: {str(elapsed)})')
+        return result, exception, (start, end, elapsed)
     return inner
 
 
@@ -51,14 +53,16 @@ def worker(func):
     return ml_studies_fn(func, 'worker')
 
 
-def task(silent_start=True):
+def task(**kwargs):
     def outer(func):
-        return ml_studies_fn(func, 'task', silent_start=silent_start)
+        return ml_studies_fn(func, 'task', **kwargs)
     return outer
 
 
-def subtask(func):
-    return ml_studies_fn(func, 'subtask')
+def subtask(**kwargs):
+    def outer(func):
+        return ml_studies_fn(func, 'subtask', **kwargs)
+    return outer
 
 
 def log_report(name: ReportTypes):
@@ -66,10 +70,10 @@ def log_report(name: ReportTypes):
         def inner(*args, **kwargs):
             report = Report.open()
             entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)
-            r, e = func(*args, **kwargs)
-            report.close(r, e)
+            result, exception, (start, end, elapsed) = func(*args, **kwargs)
+            report.close(result, exception, start=start, end=end, elapsed=elapsed)
             entry.reports[name.value] = report
-            return r, e
+            return result, exception
         return inner
     return outer
 
@@ -96,8 +100,11 @@ def threaded(max_threads: int = None):
 
     def next_id():
         nonlocal _id
+
+        # For conserving space in logging output
+        _id = _id + 1 if _id < 1 * 1000 * 1000 else 1
+
         return_val = str(_id)
-        _id += 1
         return return_val
 
     def outer(func):
@@ -107,7 +114,7 @@ def threaded(max_threads: int = None):
             global _threads
             nonlocal _id, max_threads
 
-            prefix = 'ml-studies-thread-'
+            prefix = 'ml-studies-t'
 
             thread = Thread(
                 target=func,

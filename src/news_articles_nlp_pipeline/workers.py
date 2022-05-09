@@ -9,7 +9,7 @@ from .subtasks import get_cnn_rss_urls, get_cnn_money_rss_urls, scrape_rss_entri
 
 @worker
 def index_newest_articles():
-    with get_index('all') as index:
+    with get_index() as index:
         prev_entries_count = index.entries_count
         entries = index.get_entries()
         
@@ -20,7 +20,7 @@ def index_newest_articles():
         
         topics_entries = []
         for topic, rss_url in topics_urls:
-            new_entries, exception = scrape_rss_entries(rss_url)
+            new_entries, exception, _ = scrape_rss_entries(rss_url)
             topics_entries.append((topic, new_entries))
 
         for topic, new_entries in topics_entries:
@@ -55,7 +55,7 @@ def scrape_articles():
             )
         )
 
-    with get_index('cnn') as index:
+    with get_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             scrape_html(entry)
 
@@ -77,7 +77,7 @@ def extract_texts():
             )
         )
 
-    with get_index('cnn') as index:
+    with get_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             extract_text(entry)
         
@@ -93,7 +93,7 @@ def process_texts():
             not _entry.reports[ReportTypes.PROCESS_TEXT.value].status == Status.SUCCESS
         )
 
-    with get_index('cnn') as index:
+    with get_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             process_text(entry)
 
@@ -109,7 +109,7 @@ def create_wordclouds():
             not _entry.reports[ReportTypes.CREATE_WORDCLOUD.value].has_been_attempted
         )
 
-    with get_index('cnn') as index:
+    with get_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             create_wordcloud(entry)
 

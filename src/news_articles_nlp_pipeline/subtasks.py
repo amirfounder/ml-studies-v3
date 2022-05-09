@@ -7,17 +7,17 @@ import requests
 
 from ..commons import write, read
 from ..decorators import subtask
-from ..env import is_env_dev, is_env_prod
+from ..enums import Paths
 
 
-@subtask
+@subtask(silent_success=True, silent_start=True)
 def scrape_rss_entries(rss_url) -> list[dict]:
     return feedparser.parse(rss_url).entries
 
 
-@subtask
+@subtask(silent_success=True, silent_start=True)
 def get_cnn_rss_urls():
-    path = 'data/' + ('dev/' if is_env_dev() else 'prod/' if is_env_prod() else '') + 'cnn_rss_html.html'
+    path = str(Paths.CNN_RSS_HTML_OUTPUT)
     if not exists(path):
         resp = requests.get('https://www.cnn.com/services/rss/')
         resp.raise_for_status()
@@ -31,9 +31,9 @@ def get_cnn_rss_urls():
     return list(zip(topics, urls))
 
 
-@subtask
+@subtask(silent_success=True, silent_start=True)
 def get_cnn_money_rss_urls():
-    path = 'data/' + ('dev/' if is_env_dev() else 'prod/' if is_env_prod() else '') + 'cnn_money_rss_html.html'
+    path = str(Paths.CNN_MONEY_RSS_HTML_OUTPUT)
     if not exists(path):
         resp = requests.get('https://money.cnn.com/services/rss/')
         resp.raise_for_status()
