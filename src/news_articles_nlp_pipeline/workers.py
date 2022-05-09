@@ -114,3 +114,24 @@ def create_wordclouds():
             create_wordcloud(entry)
 
         join_threads(create_wordcloud)
+
+
+@worker
+def create_sentiment_analyses():
+    pass
+
+
+@worker
+def create_emotional_analyses():
+    pass
+
+
+@worker
+def create_n_gram_analyses():
+    pass
+
+
+@worker
+def create_summaries():
+    pass
+

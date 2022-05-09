@@ -47,3 +47,31 @@ def process_text(entry: IndexEntry):
 @task()
 def create_wordcloud(entry: IndexEntry):
     pass
+
+
+@threaded(max_threads=100)
+@log_report(ReportTypes.CREATE_SENTIMENT_ANALYSIS)
+@task
+def create_sentiment_analysis(entry: IndexEntry):
+    pass
+
+
+@threaded(max_threads=100)
+@log_report(ReportTypes.CREATE_EMOTIONAL_ANALYSIS)
+@task
+def create_emotional_analysis(entry: IndexEntry):
+    pass
+
+
+@threaded(max_threads=100)
+@log_report(ReportTypes.CREATE_N_GRAM_ANALYSIS)
+@task
+def create_n_gram_analysis(entry: IndexEntry):
+    pass
+
+
+@threaded(max_threads=100)
+@log_report(ReportTypes.CREATE_SUMMARY)
+@task
+def create_summary(entry: IndexEntry):
+    pass

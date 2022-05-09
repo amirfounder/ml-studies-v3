@@ -87,7 +87,7 @@ def join_threads(func: Callable):
         del _threads[k]
 
 
-def threaded(max_threads: int = 50):
+def threaded(max_threads: int = None):
     """
     Note: This decorator must be the last of the decorators used on a fn as the threaded fn map uses the id of the
     inner functions of this decorator. Failure to do so will result in an almost guaranteed failed thread cleanup.
@@ -122,8 +122,9 @@ def threaded(max_threads: int = 50):
             if k not in _threads:
                 _threads[k] = []
 
-            while len([t for t in enum_threads() if t.name.startswith(prefix)]) > max_threads:
-                time.sleep(1)
+            if max_threads:
+                while len([t for t in enum_threads() if t.name.startswith(prefix)]) > max_threads:
+                    time.sleep(1)
 
             _threads[k].append(thread)
             thread.start()
