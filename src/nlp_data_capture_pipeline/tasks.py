@@ -9,8 +9,9 @@ from ..enums import ReportTypes, Paths
 from ..models import IndexEntry
 
 
-@log_report(ReportTypes.SCRAPE_ARTICLES)
-@task
+# @threaded(max_threads=50)
+@log_report(ReportTypes.SCRAPE_ARTICLE)
+@task()
 def scrape_html(entry: IndexEntry):
     output_path = Paths.SCRAPE_HTMLS_OUTPUT.format(filename=entry.filename)
     
@@ -19,8 +20,9 @@ def scrape_html(entry: IndexEntry):
     write(output_path, resp.text)
     
 
-@log_report(ReportTypes.EXTRACT_TEXTS)
-@task
+# @threaded(max_threads=50)
+@log_report(ReportTypes.EXTRACT_TEXT)
+@task()
 def extract_text(entry: IndexEntry):
     input_path = Paths.SCRAPE_HTMLS_OUTPUT.format(filename=entry.filename)
     output_path = Paths.EXTRACT_TEXTS_OUTPUT.format(filename=entry.filename)
@@ -29,11 +31,19 @@ def extract_text(entry: IndexEntry):
     write(output_path, soup.text)
 
 
-@log_report(ReportTypes.PROCESS_TEXTS)
-@task
+# @threaded(max_threads=50)
+@log_report(ReportTypes.PROCESS_TEXT)
+@task()
 def process_text(entry: IndexEntry):
     input_path = Paths.EXTRACT_TEXTS_OUTPUT.format(filename=entry.filename)
     output_path = Paths.PROCESS_TEXTS_OUTPUT.format(filename=entry.filename)
     
     doc = nlp(read(input_path))
     write(output_path, contents=pickle.dumps(doc), mode='wb')
+
+
+# @threaded(max_threads=50)
+@log_report(ReportTypes.CREATE_WORDCLOUD)
+@task()
+def create_wordcloud(entry: IndexEntry):
+    pass

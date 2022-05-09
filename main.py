@@ -14,8 +14,5 @@ if __name__ == '__main__':
     schedule.every(30).minutes.do(nlp_data_capture_pipeline)
 
     while True:
-        try:
-            schedule.run_pending()
-            time.sleep(60)
-        finally:
-            print('Program closed.')
+        schedule.run_pending()
+        time.sleep(60)

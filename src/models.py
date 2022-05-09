@@ -152,7 +152,10 @@ class RssUrl(Model):
 class IndexEntry(Model):
     def __init__(self, **kwargs):
         self.filename = kwargs['filename']
-        self.reports = {k: (v if isinstance(v, Report) else Report(**v)) for k, v in kwargs.get('reports', {}).items()}
+        self.reports: dict[str, Report] = {
+            k: (v if isinstance(v, Report) else Report(**v))
+            for k, v in kwargs.get('reports', {}).items()
+        }
         for t in ReportTypes:
             if t.value not in self.reports:
                 self.reports[t.value] = Report()

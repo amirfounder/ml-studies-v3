@@ -1,22 +1,23 @@
 from enum import Enum
 
-from .env import is_env_prod, is_env_dev
+from .env import is_env_prod, is_env_dev, env
 
 
 def data_directory_name():
-    return 'data/' + ('dev' if is_env_dev() else 'prod' if is_env_prod() else '')
+    return 'data/' + env('')
 
 
 class ReportTypes(Enum):
-    SCRAPE_ARTICLES = 'scrape_htmls'
-    EXTRACT_TEXTS = 'extract_texts'
-    PROCESS_TEXTS = 'process_texts'
+    SCRAPE_ARTICLE = 'scrape_articles'
+    EXTRACT_TEXT = 'extract_texts'
+    PROCESS_TEXT = 'process_texts'
+    CREATE_WORDCLOUD = 'create_wordclouds'
 
 
 class Paths(Enum):
     LOGGING = '{d}/logs.log'
     SCRAPE_HTMLS_OUTPUT = '{d}/cnn_articles_html/{filename}.html'
-    EXTRACT_TEXTS_OUTPUT = '{d}/cnn_articles_extracted_texts/{filename}.json'
+    EXTRACT_TEXTS_OUTPUT = '{d}/cnn_articles_extracted_texts/{filename}.txt'
     PROCESS_TEXTS_OUTPUT = '{d}/cnn_articles_processed_texts/{filename}.pickle'
     CNN_ARTICLE_INDEX = '{d}/index.json'
 

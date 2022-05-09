@@ -3,13 +3,13 @@ from ..decorators import worker
 from ..env import is_env_dev
 from ..models import IndexEntry, get_index
 from ..enums import Status, ReportTypes
-from .tasks import scrape_html, extract_text, process_text
+from .tasks import scrape_html, extract_text, process_text, create_wordcloud
 from .subtasks import get_cnn_rss_urls, get_cnn_money_rss_urls, scrape_rss_entries
 
 
 @worker
-def index_rss_entries():
-    with get_index('cnn') as index:
+def index_newest_articles():
+    with get_index('all') as index:
         prev_entries_count = index.entries_count
         entries = index.get_entries()
         
@@ -41,17 +41,17 @@ def index_rss_entries():
 
 
 @worker
-def scrape_htmls():
+def scrape_articles():
 
     def filter_fn(_entry: IndexEntry):
         return (
             (
-                int(_entry.filename) < 10 and
-                not _entry.reports[ReportTypes.SCRAPE_ARTICLES.value].has_been_attempted
+                int(_entry.filename) <= 10 and
+                not _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].has_been_attempted
             )
             if is_env_dev() else
             (
-                not _entry.reports[ReportTypes.SCRAPE_ARTICLES.value].has_been_attempted
+                not _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].has_been_attempted
             )
         )
 
@@ -65,8 +65,8 @@ def extract_texts():
 
     def filter_fn(_entry: IndexEntry):
         return (
-            _entry.reports[ReportTypes.SCRAPE_ARTICLES.value].status == Status.SUCCESS and
-            not _entry.reports[ReportTypes.EXTRACT_TEXTS.value].has_been_attempted
+            _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].status == Status.SUCCESS
+            # not _entry.reports[ReportTypes.EXTRACT_TEXT.value].has_been_attempted
         )
 
     with get_index('cnn') as index:
@@ -79,10 +79,24 @@ def process_texts():
 
     def filter_fn(_entry: IndexEntry):
         return (
-            _entry.reports[ReportTypes.EXTRACT_TEXTS.value].status == Status.SUCCESS and
-            not _entry.reports[ReportTypes.PROCESS_TEXTS.value].status == Status.SUCCESS
+            _entry.reports[ReportTypes.EXTRACT_TEXT.value].status == Status.SUCCESS and
+            not _entry.reports[ReportTypes.PROCESS_TEXT.value].status == Status.SUCCESS
         )
 
     with get_index('cnn') as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             process_text(entry)
+
+
+@worker
+def create_wordclouds():
+
+    def filter_fn(_entry: IndexEntry):
+        return (
+            _entry.reports[ReportTypes.PROCESS_TEXT.value].status == Status.SUCCESS and
+            not _entry.reports[ReportTypes.CREATE_WORDCLOUD.value].has_been_attempted
+        )
+
+    with get_index('cnn') as index:
+        for entry in index.get_entries(filter_fn=filter_fn).values():
+            create_wordcloud(entry)
