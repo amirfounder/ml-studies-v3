@@ -1,5 +1,16 @@
 # ML Studies
 
+## Usage
+
+Close your eyes and type the following command:
+
+```commandline
+python main.py --prod
+```
+
+No setup needed (I think).
+This program should build out any additional directory structure as needed if it doesn't already exist.
+
 ## Entities:
 
 ### Index
