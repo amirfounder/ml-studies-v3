@@ -59,6 +59,8 @@ def scrape_articles():
         for entry in index.get_entries(filter_fn=filter_fn).values():
             scrape_html(entry)
 
+        join_threads(scrape_html)
+
 
 @worker
 def extract_texts():
@@ -89,6 +91,8 @@ def process_texts():
         for entry in index.get_entries(filter_fn=filter_fn).values():
             process_text(entry)
 
+        join_threads(process_text)
+
 
 @worker
 def create_wordclouds():
@@ -102,3 +106,5 @@ def create_wordclouds():
     with get_index('cnn') as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             create_wordcloud(entry)
+
+        join_threads(create_wordcloud)

@@ -74,11 +74,11 @@ def log_report(name: ReportTypes):
     return outer
 
 
-_threads: dict[tuple[str, str], list[Thread]] = {}
+_threads: dict[tuple[int, str], list[Thread]] = {}
 
 
-def join_threads(func: Callable = None):
-    k = (func.__name__, current_thread().name)
+def join_threads(func: Callable):
+    k = (id(func), current_thread().name)
 
     if k in _threads:
         threads_to_join = _threads[k]
@@ -88,12 +88,17 @@ def join_threads(func: Callable = None):
 
 
 def threaded(max_threads: int = 50):
-    _id = 1
+    """
+    Note: This decorator must be the last of the decorators used on a fn as the threaded fn map uses the id of the
+    inner functions of this decorator. Failure to do so will result in an almost guaranteed failed thread cleanup.
+    """
+    _id = 0
 
     def next_id():
         nonlocal _id
+        return_val = str(_id)
         _id += 1
-        return str(_id)
+        return return_val
 
     def outer(func):
         nonlocal _id, max_threads
@@ -112,7 +117,7 @@ def threaded(max_threads: int = 50):
                 name=prefix + next_id()
             )
 
-            k = (func.__name__, current_thread().name)
+            k = (id(inner), current_thread().name)
 
             if k not in _threads:
                 _threads[k] = []

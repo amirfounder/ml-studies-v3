@@ -9,7 +9,7 @@ from ..enums import ReportTypes, Paths
 from ..models import IndexEntry
 
 
-# @threaded(max_threads=50)
+@threaded(max_threads=50)
 @log_report(ReportTypes.SCRAPE_ARTICLE)
 @task()
 def scrape_html(entry: IndexEntry):
