@@ -1,6 +1,6 @@
 from enum import Enum
 
-from .env import is_env_prod, is_env_dev, env
+from .env import env
 
 
 def data_directory_name():
