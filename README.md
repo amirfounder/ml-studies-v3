@@ -32,3 +32,8 @@ This function should implement thread / process safe protocols.
 A function called by the task.
 The lowest level in the categorical hierarchy of functions.
 This function should also (like a task) implement thread / process safe protocols.
+
+# todo
+
+- parameter to allow index to flush regularly
+- custom thread to return values and store them into a pool of results that is retrieved by the `join_threads` fn
