@@ -67,8 +67,14 @@ def extract_texts():
 
     def filter_fn(_entry: IndexEntry):
         return (
-            _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].status == Status.SUCCESS
-            # not _entry.reports[ReportTypes.EXTRACT_TEXT.value].has_been_attempted
+            (
+                _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].status == Status.SUCCESS
+            )
+            if is_env_dev() else
+            (
+                _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].status == Status.SUCCESS and
+                not _entry.reports[ReportTypes.EXTRACT_TEXT.value].has_been_attempted
+            )
         )
 
     with get_index('cnn') as index:
