@@ -85,6 +85,9 @@ def success(message):
     _log(message, 'success')
 
 
+# TODO - Need to use json to manage subprocesses with os.getpid() when pipelines need to run concurrently
+
+
 def set_env_to_prod():
     info('Setting working environment to prod')
     environ['ML_STUDIES_ENV'] = 'prod'
@@ -93,3 +96,15 @@ def set_env_to_prod():
 def set_env_to_dev():
     info('Setting working environment to dev')
     environ['ML_STUDIES_ENV'] = 'dev'
+
+
+def set_current_pipeline_var(value: str):
+    key = 'CURRENT_PIPELINE'
+    info(f'Setting {key} env variable to: {value}')
+    environ[key] = value
+
+
+def set_current_worker_var(value: str):
+    key = 'CURRENT_WORKER'
+    info(f'Setting {key} env variable to: {value}')
+    environ[key] = value
