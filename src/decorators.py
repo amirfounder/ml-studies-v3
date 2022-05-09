@@ -1,5 +1,6 @@
 import time
-from threading import Thread, enumerate as enum_threads
+from threading import Thread, enumerate as enum_threads, current_thread
+from typing import Callable
 
 from src.commons import now, info, error, success
 from src.enums import ReportTypes
@@ -55,6 +56,7 @@ def task(silent_start=True):
         return ml_studies_fn(func, 'task', silent_start=silent_start)
     return outer
 
+
 def subtask(func):
     return ml_studies_fn(func, 'subtask')
 
@@ -72,6 +74,19 @@ def log_report(name: ReportTypes):
     return outer
 
 
+_threads: dict[tuple[str, str], list[Thread]] = {}
+
+
+def join_threads(func: Callable = None):
+    k = (func.__name__, current_thread().name)
+
+    if k in _threads:
+        threads_to_join = _threads[k]
+        for t in threads_to_join:
+            t.join()
+        del _threads[k]
+
+
 def threaded(max_threads: int = 50):
     _id = 1
 
@@ -80,13 +95,12 @@ def threaded(max_threads: int = 50):
         _id += 1
         return str(_id)
 
-    threads = []
-
     def outer(func):
-        nonlocal _id, threads, max_threads
+        nonlocal _id, max_threads
 
         def inner(*args, **kwargs):
-            nonlocal _id, threads, max_threads
+            global _threads
+            nonlocal _id, max_threads
 
             prefix = 'ml-studies-thread-'
 
@@ -97,10 +111,16 @@ def threaded(max_threads: int = 50):
                 daemon=True,
                 name=prefix + next_id()
             )
-            threads.append(thread)
+
+            k = (func.__name__, current_thread().name)
+
+            if k not in _threads:
+                _threads[k] = []
+
+            _threads[k].append(thread)
             thread.start()
 
-            while len([t for t in enum_threads() if t.name.startswith(prefix)]) < max_threads:
+            while len([t for t in enum_threads() if t.name.startswith(prefix)]) > max_threads:
                 time.sleep(1)
 
         return inner

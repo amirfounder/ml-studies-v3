@@ -1,9 +1,10 @@
 from ..decorators import pipeline
 from .workers import (
     index_newest_articles,
-    extract_texts,
     scrape_articles,
+    extract_texts,
     process_texts,
+    create_wordclouds,
 )
 
 
@@ -13,3 +14,4 @@ def nlp_data_capture_pipeline():
     scrape_articles()
     extract_texts()
     process_texts()
+    create_wordclouds()

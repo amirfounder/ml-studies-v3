@@ -1,5 +1,5 @@
 from ..commons import info
-from ..decorators import worker
+from ..decorators import worker, join_threads
 from ..env import is_env_dev
 from ..models import IndexEntry, get_index
 from ..enums import Status, ReportTypes
@@ -72,6 +72,8 @@ def extract_texts():
     with get_index('cnn') as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             extract_text(entry)
+        
+        join_threads(extract_text)
 
 
 @worker

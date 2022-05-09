@@ -4,7 +4,7 @@ import bs4
 import requests
 
 from ..commons import write, read, nlp
-from ..decorators import task, log_report
+from ..decorators import task, log_report, threaded
 from ..enums import ReportTypes, Paths
 from ..models import IndexEntry
 
@@ -20,7 +20,7 @@ def scrape_html(entry: IndexEntry):
     write(output_path, resp.text)
     
 
-# @threaded(max_threads=50)
+@threaded(max_threads=50)
 @log_report(ReportTypes.EXTRACT_TEXT)
 @task()
 def extract_text(entry: IndexEntry):
@@ -31,7 +31,7 @@ def extract_text(entry: IndexEntry):
     write(output_path, soup.text)
 
 
-# @threaded(max_threads=50)
+@threaded(max_threads=50)
 @log_report(ReportTypes.PROCESS_TEXT)
 @task()
 def process_text(entry: IndexEntry):
@@ -42,7 +42,7 @@ def process_text(entry: IndexEntry):
     write(output_path, contents=pickle.dumps(doc), mode='wb')
 
 
-# @threaded(max_threads=50)
+@threaded(max_threads=50)
 @log_report(ReportTypes.CREATE_WORDCLOUD)
 @task()
 def create_wordcloud(entry: IndexEntry):
