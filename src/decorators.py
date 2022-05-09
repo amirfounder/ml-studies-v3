@@ -122,11 +122,11 @@ def threaded(max_threads: int = 50):
             if k not in _threads:
                 _threads[k] = []
 
-            _threads[k].append(thread)
-            thread.start()
-
             while len([t for t in enum_threads() if t.name.startswith(prefix)]) > max_threads:
                 time.sleep(1)
+
+            _threads[k].append(thread)
+            thread.start()
 
         return inner
     return outer

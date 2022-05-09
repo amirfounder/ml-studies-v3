@@ -2,11 +2,12 @@ import json
 from datetime import datetime, timezone
 from os.path import exists
 from os import environ, makedirs
+from threading import current_thread
 from typing import Optional
 
 import spacy
 
-from .env import is_env_prod, is_env_dev
+from .env import env
 from .enums import Paths
 
 nlp = spacy.load('en_core_web_sm')
@@ -58,12 +59,13 @@ def now():
     return datetime.now(timezone.utc)
 
 
-def _log(message, level: str = 'info', env: str = None):
-    env = (env or ('prod' if is_env_prod() else 'dev' if is_env_dev() else '--')).upper().ljust(10)
+def _log(message, level: str = 'info'):
+    _env = 'ENV: ' + env().upper().ljust(10)
     level = level.upper().ljust(10)
     timestamp = now().isoformat().ljust(40)
+    thread_name = 'THREAD: ' + current_thread().name.ljust(30)
 
-    message = timestamp + env + level + message
+    message = timestamp + _env + thread_name + level + message
     print(message)
     message += '\n'
     write(str(Paths.LOGGING), message, mode='a')
