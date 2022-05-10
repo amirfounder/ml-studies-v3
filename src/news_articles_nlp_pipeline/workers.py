@@ -89,8 +89,14 @@ def process_texts():
 
     def filter_fn(_entry: IndexEntry):
         return (
-            _entry.reports[ReportTypes.EXTRACT_TEXT.value].status == Status.SUCCESS and
-            not _entry.reports[ReportTypes.PROCESS_TEXT.value].status == Status.SUCCESS
+            (
+                    _entry.reports[ReportTypes.EXTRACT_TEXT.value].status == Status.SUCCESS
+            )
+            if is_env_dev() else
+            (
+                    _entry.reports[ReportTypes.EXTRACT_TEXT.value].status == Status.SUCCESS and
+                    not _entry.reports[ReportTypes.PROCESS_TEXT.value].status == Status.SUCCESS
+            )
         )
 
     with get_index() as index:
@@ -105,8 +111,8 @@ def create_wordclouds():
 
     def filter_fn(_entry: IndexEntry):
         return (
-            _entry.reports[ReportTypes.PROCESS_TEXT.value].status == Status.SUCCESS and
-            not _entry.reports[ReportTypes.CREATE_WORDCLOUD.value].has_been_attempted
+            _entry.reports[ReportTypes.PROCESS_TEXT.value].status == Status.SUCCESS
+            # not _entry.reports[ReportTypes.CREATE_WORDCLOUD.value].has_been_attempted
         )
 
     with get_index() as index:
@@ -118,12 +124,11 @@ def create_wordclouds():
 
 @worker
 def create_sentiment_analyses():
-    pass
-
-
-@worker
-def create_emotional_analyses():
-    pass
+    standard_sentient = None
+    fine_grained_sentiment = None
+    emotion = None
+    intent = None
+    aspect_based_sentiment = None
 
 
 @worker
@@ -134,4 +139,3 @@ def create_n_gram_analyses():
 @worker
 def create_summaries():
     pass
-

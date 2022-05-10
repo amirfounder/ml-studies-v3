@@ -29,11 +29,15 @@ def read(path, mode='r', encoding='utf-8'):
             return f.read()
 
 
-def write(path, contents, mode='w', encoding='utf-8'):
+def makedirs_from_path(path: str):
     if not exists(path):
         dir_path = '/'.join(path.split('/')[:-1])
         if not exists(dir_path):
             makedirs(dir_path)
+
+
+def write(path, contents, mode='w', encoding='utf-8'):
+    makedirs_from_path(path)
 
     kwargs = dict(
         file=path,
