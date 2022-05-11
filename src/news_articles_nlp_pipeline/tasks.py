@@ -98,7 +98,11 @@ def create_wordcloud(entry: IndexEntry):
 @log_report(ReportTypes.CREATE_SENTIMENT_ANALYSIS)
 @task()
 def create_sentiment_analysis(entry: IndexEntry):
-    pass
+    standard_sentiment = None
+    fine_grained_sentiment = None
+    emotion = None
+    intent = None
+    aspect_based_sentiment = None
 
 
 @threaded(max_threads=100)

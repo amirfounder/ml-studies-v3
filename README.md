@@ -46,10 +46,11 @@ Each pipeline has a module of its own in the  `src` directory of the package.
 ### Worker
 
 A worker is a function that runs one or more tasks and subtasks, often concurrently in threads.
+Can be thought of as a batch runner - running a batch of N tasks at each step of the pipeline.
 
 ### Task
 
-A task a piece of code that runs.
+A task a piece of code that runs in a worker.
 This function should implement thread / process safe protocols.
 
 ### Subtask
