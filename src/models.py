@@ -149,6 +149,7 @@ class IndexEntry(Model):
         self.reports: dict[str, Report] = {
             k: (v if isinstance(v, Report) else Report(**v))
             for k, v in kwargs.get('reports', {}).items()
+            if k in [t.value for t in ReportTypes]
         }
         for t in ReportTypes:
             if t.value not in self.reports:

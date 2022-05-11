@@ -41,6 +41,11 @@ def index_newest_articles():
 
 
 @worker
+def image_articles():
+    pass
+
+
+@worker
 def scrape_articles():
 
     def filter_fn(_entry: IndexEntry):

@@ -3,6 +3,7 @@ import re
 
 import bs4
 import requests
+import contractions
 
 from ..commons import write, read, nlp
 from ..decorators import task, log_report, threaded
@@ -19,7 +20,46 @@ def scrape_html(entry: IndexEntry):
     resp = requests.get(entry.url)
     resp.raise_for_status()
     write(output_path, resp.text)
-    
+
+
+@log_report(ReportTypes)
+@task()
+def image_article(entry: IndexEntry):
+    # output_path = Paths
+
+    # TODO for optimization. for now, wait 3 seconds
+    # start server? (here or in pipeline?)
+    # server.add_listener('webpage_loaded')
+
+    # open(entry.url)
+    # server.wait_for_listener_response('webpage_loaded') # todo part of todo mentioned above
+    # paths = {}
+    # more_to_scroll = True
+    # i = 1
+    # prev_img = screenshot()
+    # path = path_template.format(filename=i)
+    # save(path, prev_img)
+    # paths[i] = path
+
+    # while more_to_scroll:
+    #     i += 1
+    #     mouse.scroll(10)
+    #     current_img = screenshot()
+    #     path = path_template.format(filename=i)
+    #     paths[i] = path
+    #     save(path, current_img)
+    #     more_to_scroll = (similarity_score(prev_img, current_img) < 90) or i < 20
+    #     prev_img = current_img
+
+    # image = stitch_images_pipeline(paths=paths.values())
+    # path = path_template.format(filename='stitched')
+    # paths['stitched'] = path
+    # save(path, image.bytes, mode='wb')
+    # text_sections = image.get_text_sections()
+    # main_text = [section.is_main for section in text_sections]
+    # approved = get_approval_from_supervisor()
+    pass
+
 
 @threaded(max_threads=100)
 @log_report(ReportTypes.EXTRACT_TEXT)
@@ -36,11 +76,12 @@ def extract_text(entry: IndexEntry):
     text = re.sub('\t{2,}', ' ', text)
     text.removeprefix('\n')
     text.removesuffix('\n')
+    text = contractions.fix(text)
 
     write(output_path, text)
 
 
-@threaded(max_threads=100)
+@threaded(max_threads=1)
 @log_report(ReportTypes.ANALYZE_TEXT)
 @task()
 def analyze_text(entry: IndexEntry):
@@ -49,6 +90,9 @@ def analyze_text(entry: IndexEntry):
 
     text = read(input_path)
     doc = nlp(text)
+
+    sentences = [s.text for s in doc.sents]
+
     tokens = [
         token for token in doc if
         not token.is_stop and
@@ -92,7 +136,8 @@ def analyze_text(entry: IndexEntry):
 
     contents = {
         'views': views,
-        'models': models
+        'models': models,
+        'sentences': sentences
     }
 
     write(output_path, json.dumps(contents))
