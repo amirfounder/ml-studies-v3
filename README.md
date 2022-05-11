@@ -64,3 +64,10 @@ This function should also (like a task) implement thread / process safe protocol
 - parameter to allow index to flush regularly
 - custom thread to return values and store them into a pool of results that is retrieved by the `join_threads` fn
 - file locks
+
+# major change / decision log
+
+initially, we were saving the spacy doc to a pickle file in a worker called process_texts.
+after saving 1000 files, the size was ~2.7gb.
+for comparison, the extracted text size of 1000 articles was ~10mb.
+we are now having the processing of the data (removing redundant whitespaces) as part of the extract text worker

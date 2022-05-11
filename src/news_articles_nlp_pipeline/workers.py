@@ -3,7 +3,7 @@ from ..decorators import worker, join_threads
 from ..env import is_env_dev
 from ..models import IndexEntry, get_index
 from ..enums import Status, ReportTypes
-from .tasks import scrape_html, extract_text, process_text, create_wordcloud
+from .tasks import scrape_html, extract_text, analyze_text
 from .subtasks import get_cnn_rss_urls, get_cnn_money_rss_urls, scrape_rss_entries
 
 
@@ -44,16 +44,9 @@ def index_newest_articles():
 def scrape_articles():
 
     def filter_fn(_entry: IndexEntry):
-        return (
-            (
-                int(_entry.filename) <= 10 and
-                not _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].has_been_attempted
-            )
-            if is_env_dev() else
-            (
-                not _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].has_been_attempted
-            )
-        )
+        first_ten = int(_entry.filename) <= 10
+        attempted = _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].has_been_attempted
+        return first_ten and not attempted if is_env_dev() else not attempted
 
     with get_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
@@ -66,16 +59,9 @@ def scrape_articles():
 def extract_texts():
 
     def filter_fn(_entry: IndexEntry):
-        return (
-            (
-                _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].status == Status.SUCCESS
-            )
-            if is_env_dev() else
-            (
-                _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].status == Status.SUCCESS and
-                not _entry.reports[ReportTypes.EXTRACT_TEXT.value].has_been_attempted
-            )
-        )
+        prev_success = _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].status == Status.SUCCESS
+        attempted = _entry.reports[ReportTypes.EXTRACT_TEXT.value].has_been_attempted
+        return prev_success if is_env_dev() else prev_success and not attempted
 
     with get_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
@@ -85,50 +71,22 @@ def extract_texts():
 
 
 @worker
-def process_texts():
+def analyze_texts():
 
     def filter_fn(_entry: IndexEntry):
-        return (
-            (
-                    _entry.reports[ReportTypes.EXTRACT_TEXT.value].status == Status.SUCCESS
-            )
-            if is_env_dev() else
-            (
-                    _entry.reports[ReportTypes.EXTRACT_TEXT.value].status == Status.SUCCESS and
-                    not _entry.reports[ReportTypes.PROCESS_TEXT.value].status == Status.SUCCESS
-            )
-        )
+        prev_success = _entry.reports[ReportTypes.EXTRACT_TEXT.value].status == Status.SUCCESS
+        attempted = _entry.reports[ReportTypes.ANALYZE_TEXT.value].status == Status.SUCCESS
+        return prev_success if is_env_dev() else prev_success and not attempted
 
     with get_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
-            process_text(entry)
+            analyze_text(entry)
 
-        join_threads(process_text)
-
-
-@worker
-def create_wordclouds():
-
-    def filter_fn(_entry: IndexEntry):
-        return (
-            _entry.reports[ReportTypes.PROCESS_TEXT.value].status == Status.SUCCESS and
-            not _entry.reports[ReportTypes.CREATE_WORDCLOUD.value].has_been_attempted
-        )
-
-    with get_index() as index:
-        for entry in index.get_entries(filter_fn=filter_fn).values():
-            create_wordcloud(entry)
-
-        join_threads(create_wordcloud)
+        join_threads(analyze_text)
 
 
 @worker
 def create_sentiment_analyses():
-    pass
-
-
-@worker
-def create_n_gram_analyses():
     pass
 
 

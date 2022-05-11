@@ -6,11 +6,8 @@ from .env import env
 class ReportTypes(Enum):
     SCRAPE_ARTICLE = 'scrape_articles'
     EXTRACT_TEXT = 'extract_texts'
-    PROCESS_TEXT = 'process_texts'
-    CREATE_WORDCLOUD = 'create_wordclouds'
+    ANALYZE_TEXT = 'analyze_texts'
     CREATE_SENTIMENT_ANALYSIS = 'create_sentiment_analysis'
-    CREATE_EMOTIONAL_ANALYSIS = 'create_emotional_analysis'
-    CREATE_N_GRAM_ANALYSIS = 'create_n_gram_analysis'
     CREATE_SUMMARY = 'create_summary'
 
 
@@ -20,12 +17,8 @@ class Paths(Enum):
 
     SCRAPE_HTMLS_OUTPUT = 'data/{env}/news-articles-nlp/articles//{source}/html/{filename}.html'
     EXTRACT_TEXTS_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/extracted/{filename}.txt'
-    PROCESS_TEXTS_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/processed/{filename}.pickle'
-    WORDCLOUD_OUTPUTS = 'data/{env}/news-articles-nlp/articles/{source}/wordcloud-data/{filename}.csv'
-    WORDCLOUD_IMAGES_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/wordcloud-images/{filename}.png'
+    ANALYZE_TEXTS_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/analyzed/{filename}.json'
     SENTIMENT_ANALYSES_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/sentiment-analyses/{filename}.json'
-    EMOTIONAL_ANALYSES_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/emotional-analyses/{filename}.json'
-    N_GRAM_ANALYSES_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/n-gram-analyses/{filename}.csv'
     SUMMARIES_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/summaries/{filename}.txt'
 
     CNN_MONEY_RSS_HTML_OUTPUT = 'data/{env}/news-articles-nlp/static/cnn-money-rss-page.html'

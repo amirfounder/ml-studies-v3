@@ -1,13 +1,10 @@
-import pickle
+import json
 import re
 
 import bs4
 import requests
-from wordcloud import WordCloud
-from PIL import Image
 
-from .subtasks import clean_tokens
-from ..commons import write, read, nlp, makedirs_from_path
+from ..commons import write, read, nlp
 from ..decorators import task, log_report, threaded
 from ..enums import ReportTypes, Paths
 from ..models import IndexEntry
@@ -17,7 +14,7 @@ from ..models import IndexEntry
 @log_report(ReportTypes.SCRAPE_ARTICLE)
 @task()
 def scrape_html(entry: IndexEntry):
-    output_path = Paths.SCRAPE_HTMLS_OUTPUT.format(source=entry.source, filename=entry.filename)
+    output_path = Paths.SCRAPE_HTMLS_OUTPUT.format(**dict(entry))
     
     resp = requests.get(entry.url)
     resp.raise_for_status()
@@ -28,70 +25,77 @@ def scrape_html(entry: IndexEntry):
 @log_report(ReportTypes.EXTRACT_TEXT)
 @task()
 def extract_text(entry: IndexEntry):
-    input_path = Paths.SCRAPE_HTMLS_OUTPUT.format(source=entry.source, filename=entry.filename)
-    output_path = Paths.EXTRACT_TEXTS_OUTPUT.format(source=entry.source, filename=entry.filename)
+    input_path = Paths.SCRAPE_HTMLS_OUTPUT.format(**dict(entry))
+    output_path = Paths.EXTRACT_TEXTS_OUTPUT.format(**dict(entry))
 
     soup = bs4.BeautifulSoup(read(input_path), 'html.parser')
-    write(output_path, soup.text)
 
-
-@threaded(max_threads=100)
-@log_report(ReportTypes.PROCESS_TEXT)
-@task()
-def process_text(entry: IndexEntry):
-    input_path = Paths.EXTRACT_TEXTS_OUTPUT.format(source=entry.source, filename=entry.filename)
-    output_path = Paths.PROCESS_TEXTS_OUTPUT.format(source=entry.source, filename=entry.filename)
-
-    text = read(input_path)
+    text = soup.text
     text = re.sub(' {2,}', ' ', text)
     text = re.sub('\n{2,}', '\n', text)
     text = re.sub('\t{2,}', ' ', text)
+    text.removeprefix('\n')
+    text.removesuffix('\n')
 
-    doc = nlp(text)
-    write(output_path, contents=pickle.dumps(doc), mode='wb')
+    write(output_path, text)
 
 
 @threaded(max_threads=100)
-@log_report(ReportTypes.CREATE_WORDCLOUD)
+@log_report(ReportTypes.ANALYZE_TEXT)
 @task()
-def create_wordcloud(entry: IndexEntry):
-    input_path = Paths.PROCESS_TEXTS_OUTPUT.format(source=entry.source, filename=entry.filename)
-    output_csv_path = Paths.WORDCLOUD_OUTPUTS.format(**dict(entry))
-    output_img_path = Paths.WORDCLOUD_IMAGES_OUTPUT.format(**dict(entry))
+def analyze_text(entry: IndexEntry):
+    input_path = Paths.EXTRACT_TEXTS_OUTPUT.format(**dict(entry))
+    output_path = Paths.ANALYZE_TEXTS_OUTPUT.format(**dict(entry))
 
-    doc = pickle.loads(read(input_path, mode='rb'))
-    tokens = clean_tokens(doc)[0]
-    lemmas = [token.lemma_.lower() for token in tokens]
+    text = read(input_path)
+    doc = nlp(text)
+    tokens = [
+        token for token in doc if
+        not token.is_stop and
+        not token.is_punct and
+        not token.like_url and
+        not token.like_email and
+        not token.text.startswith('@') and
+        not token.is_space
+    ]
 
-    lemma_map = {}
-    lemmas_len = len(lemmas)
+    lemmas = [token.lemma_ for token in tokens]
 
+    lengths = {}
+    occurrences = {}
     for lemma in lemmas:
-        if lemma not in lemma_map:
-            lemma_map[lemma] = dict(
-                count=0,
-                frequency=None,
-                lemma=lemma
-            )
-        lemma_map[lemma]['count'] += 1
+        lengths[lemma] = len(lemma)
+        if lemma not in occurrences:
+            occurrences[lemma] = 0
+        occurrences[lemma] += 1
 
-    for k, v in lemma_map.items():
-        lemma_map[k]['frequency'] = v['count'] / lemmas_len
+    total = len(lemmas)
+    frequencies = {}
+    for lemma, _occurrences in occurrences.items():
+        frequencies[lemma] = _occurrences / total
 
-    wc = WordCloud(background_color='white', height=500, width=500, prefer_horizontal=.9)
-    wc.generate_from_text(' '.join(lemmas))
-    makedirs_from_path(output_img_path)
-    wc.to_file(output_img_path)
+    models = {
+        lemma: {
+            'occurrences': occurrences[lemma],
+            'frequency': frequencies[lemma],
+            'length': lengths[lemma],
+            'syllables': None
+        } for lemma in lemmas
+    }
 
-    rows = [['lemma', 'count', 'frequency']]
-    for lemma_obj in list(lemma_map.values()):
-        row = []
-        for k in rows[0]:
-            row.append('"' + str(lemma_obj[k]) + '"')
-        rows.append(row)
+    views = {
+        'occurrences': occurrences,
+        'frequencies': frequencies,
+        'syllables': None,  # TODO implement this?
+        'lengths': lengths
+    }
 
-    contents = '\n'.join([','.join(row) for row in rows])
-    write(output_csv_path, contents)
+    contents = {
+        'views': views,
+        'models': models
+    }
+
+    write(output_path, json.dumps(contents))
 
 
 @threaded(max_threads=100)
@@ -103,13 +107,6 @@ def create_sentiment_analysis(entry: IndexEntry):
     emotion = None
     intent = None
     aspect_based_sentiment = None
-
-
-@threaded(max_threads=100)
-@log_report(ReportTypes.CREATE_N_GRAM_ANALYSIS)
-@task()
-def create_n_gram_analysis(entry: IndexEntry):
-    pass
 
 
 @threaded(max_threads=100)

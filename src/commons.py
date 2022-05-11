@@ -93,13 +93,13 @@ def success(message):
 
 
 def set_env_to_prod():
-    info('Setting working environment to prod')
     environ['ML_STUDIES_ENV'] = 'prod'
+    info('Working environment set to prod.')
 
 
 def set_env_to_dev():
-    info('Setting working environment to dev')
     environ['ML_STUDIES_ENV'] = 'dev'
+    info('Working environment set to dev.')
 
 
 def set_current_pipeline_var(value: str):
