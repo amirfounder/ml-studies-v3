@@ -115,11 +115,17 @@ def set_current_worker_var(value: str):
     environ[key] = value
 
 
-def get_levenshtein_distance(
-        token1: str,
-        token2: str,
-        equals_fn: Callable[[Any, Any], bool] = None,
-):
+def get_sentence_similarity_score(sent1: list[str], sent2: list[str]):
+    def custom_equal_fn(token1, token2):
+        _d = get_levenshtein_distance(token1, token2)
+        _r = _d / pow(len(token1), 2)
+        return (1 - _r) > .95
+
+    d = get_levenshtein_distance(sent1, sent2, equals_fn=custom_equal_fn)
+    return 1 - d / pow(len(sent1), 2)
+
+
+def get_levenshtein_distance(token1: Any, token2: Any, equals_fn: Callable[[Any, Any], bool] = None):
     """
     Uses Levenshtein distance formula to find the distance between 2 strings
     :param token1: The first token
@@ -127,7 +133,6 @@ def get_levenshtein_distance(
     :param equals_fn: Custom equal operator formula. If none, evaluates n1 == n2 where n1 = token1 and n2 = token2
     :return:
     """
-
     rows = len(token1) + 1
     cols = len(token2) + 1
     matrix = np.zeros((rows, cols))
@@ -140,9 +145,9 @@ def get_levenshtein_distance(
 
     for i in range(1, rows):
         for j in range(1, cols):
-            t1 = token1[i - 1]
-            t2 = token2[j - 1]
-            if equals_fn(t1, t2) if equals_fn else t1 == t2:
+            c1 = token1[i - 1]
+            c2 = token2[j - 1]
+            if equals_fn(c1, c2) if equals_fn else c1 == c2:
                 matrix[i][j] = matrix[i - 1][j - 1]
             else:
                 a = matrix[i][j - 1]
