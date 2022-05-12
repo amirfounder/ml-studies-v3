@@ -14,6 +14,7 @@ class ReportTypes(Enum):
 class Paths(Enum):
     LOGGING = 'data/{env}/{pipeline}/logs.log'
     ARTICLES_INDEX = 'data/{env}/news-articles-nlp/index.json'
+    SENTENCES_INDEX = 'data/{env}/news-articles-nlp/sentence-index.json'
 
     SCRAPE_HTMLS_OUTPUT = 'data/{env}/news-articles-nlp/articles//{source}/html/{filename}.html'
     EXTRACT_TEXTS_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/extracted/{filename}.txt'

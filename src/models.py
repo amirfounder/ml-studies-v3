@@ -57,17 +57,76 @@ def get_index() -> Generator[Index, None, None]:
         write(path, json.dumps(dict(index)))
 
 
+@contextmanager
+def get_sentence_index() -> Generator[SentenceIndex, None, None]:
+    # TODO - Because we will be loading all sentences chrome
+    path = str(Paths.SENTENCES_INDEX)
+    index = SentenceIndex(path)
+
+    try:
+        yield index
+
+    except Exception as e:
+        error('Exception occurred. (There are likely details in further logs ...)', e)
+
+    finally:
+        write(path, json.dumps(dict(index)))
+
+
+class SentenceIndex(Model):
+    """
+    index model:
+    {
+        sentences: {
+            "<lemmatized_sentence_sequence_n>: {
+                "id": <id>
+                "article_ids": [article_id_n, ...]
+                "non_lemmatized_sentence": <non-lemmatized sentence>,
+            }
+            ...
+        }
+        associated_articles: {
+            "n": {
+                <sentence_id_n>: ...
+                ...
+            }
+        }
+    }
+    """
+
+    @property
+    def entries_count(self):
+        return len(self.sentences)
+
+    def __init__(self, path):
+        self._index = try_load_json(read(path))
+        self.sentences = {}
+        self.associated_articles = {}
+        self._sentences_have_been_loaded = False
+        self._associated_articles_have_been_loaded = False
+
+    def __contains__(self, item):
+        return item in self._index
+
+    def get_entries(self):
+        if not self._sentences_have_been_loaded:
+            self.sentences = self._index.get('sentences')
+            self._entries_have_been_loaded = True
+
+        return self.sentences
+
+
 class Index(Model):
     @property
     def entries_count(self):
-        return len(self.get_entries())
+        return len(self.entries)
 
     def __init__(self, path: str):
+        self._index = try_load_json(read(path))
         self.entries = {}
         self.rss_urls = {}
         self._entries_have_been_loaded = False
         self._rss_urls_have_been_loaded = False
-        self._index = try_load_json(read(path))
 
     def get_entries(self, filter_fn: Callable = None) -> dict:
         if not self._entries_have_been_loaded:

@@ -9,7 +9,7 @@ from ..commons import write, read, nlp
 from ..decorators import task, log_report, threaded
 from ..enums import ReportTypes, Paths
 from ..env import is_env_dev
-from ..models import IndexEntry
+from ..models import IndexEntry, get_sentence_index, SentenceIndex
 
 
 @threaded(max_threads=50)
@@ -74,7 +74,36 @@ def analyze_text(entry: IndexEntry):
     text = read(input_path)
     doc = nlp(text)
 
-    sentences = [s.text for s in doc.sents]
+    sentences = {
+        'old': [],
+        'new': []
+    }
+
+    def clean_tokens(_tokens: list):
+        return [
+            token for token in _tokens if
+            not token.is_stop and
+            not token.is_punct and
+            not token.like_url and
+            not token.like_email and
+            not token.text.startswith('@') and
+            not token.is_space
+        ]
+
+    # Separate potentially reused sentences from unique ones.
+    with get_sentence_index() as sentence_index:
+        for sentence in doc.sents:
+            sentence_tokens_lemmatized = [s.lemma_.lower() for s in clean_tokens(sentence)]
+
+            if sentence_tokens_lemmatized in sentence_index:
+                sentence_index[sentence_tokens_lemmatized]['count'] += 1
+                sentences['old'].append(sentence)
+
+            else:
+                sentence_index[sentence_tokens_lemmatized] = {'count': 1}
+                sentences['new'].append(sentence)
+
+        sentence_index['article_count'] += 1
 
     tokens = [
         token for token in doc if
