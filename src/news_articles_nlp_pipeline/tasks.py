@@ -8,6 +8,7 @@ import contractions
 from ..commons import write, read, nlp
 from ..decorators import task, log_report, threaded
 from ..enums import ReportTypes, Paths
+from ..env import is_env_dev
 from ..models import IndexEntry
 
 
@@ -22,42 +23,24 @@ def scrape_html(entry: IndexEntry):
     write(output_path, resp.text)
 
 
+def get_articles_sentence_index():
+    pass
+
+
 @log_report(ReportTypes)
 @task()
-def image_article(entry: IndexEntry):
-    # output_path = Paths
-
-    # TODO for optimization. for now, wait 3 seconds
-    # start server? (here or in pipeline?)
-    # server.add_listener('webpage_loaded')
-
-    # open(entry.url)
-    # server.wait_for_listener_response('webpage_loaded') # todo part of todo mentioned above
-    # paths = {}
-    # more_to_scroll = True
-    # i = 1
-    # prev_img = screenshot()
-    # path = path_template.format(filename=i)
-    # save(path, prev_img)
-    # paths[i] = path
-
-    # while more_to_scroll:
-    #     i += 1
-    #     mouse.scroll(10)
-    #     current_img = screenshot()
-    #     path = path_template.format(filename=i)
-    #     paths[i] = path
-    #     save(path, current_img)
-    #     more_to_scroll = (similarity_score(prev_img, current_img) < 90) or i < 20
-    #     prev_img = current_img
-
-    # image = stitch_images_pipeline(paths=paths.values())
-    # path = path_template.format(filename='stitched')
-    # paths['stitched'] = path
-    # save(path, image.bytes, mode='wb')
-    # text_sections = image.get_text_sections()
-    # main_text = [section.is_main for section in text_sections]
-    # approved = get_approval_from_supervisor()
+def identify_similar_phrases(entry: IndexEntry):
+    """
+    sentences = {}
+    sentences = {
+        '1': {
+            's1': 1,
+            's2': 2,
+            's3': 3
+        }
+    }
+    while true:
+    """
     pass
 
 
@@ -81,7 +64,7 @@ def extract_text(entry: IndexEntry):
     write(output_path, text)
 
 
-@threaded(max_threads=1)
+@threaded(max_threads=1 if is_env_dev() else 100)
 @log_report(ReportTypes.ANALYZE_TEXT)
 @task()
 def analyze_text(entry: IndexEntry):

@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from os.path import exists
 from os import environ, makedirs
 from threading import current_thread
-from typing import Optional
+from typing import Optional, Callable, Any
+import numpy as np
 
 import spacy
 
@@ -112,3 +113,41 @@ def set_current_worker_var(value: str):
     key = 'CURRENT_WORKER'
     info(f'Setting {key} env variable to: {value}')
     environ[key] = value
+
+
+def get_levenshtein_distance(
+        token1: str,
+        token2: str,
+        equals_fn: Callable[[Any, Any], bool] = None,
+):
+    """
+    Uses Levenshtein distance formula to find the distance between 2 strings
+    :param token1: The first token
+    :param token2: The second token
+    :param equals_fn: Custom equal operator formula. If none, evaluates n1 == n2 where n1 = token1 and n2 = token2
+    :return:
+    """
+
+    rows = len(token1) + 1
+    cols = len(token2) + 1
+    matrix = np.zeros((rows, cols))
+
+    for i in range(rows):
+        matrix[i][0] = i
+
+    for i in range(cols):
+        matrix[0][i] = i
+
+    for i in range(1, rows):
+        for j in range(1, cols):
+            t1 = token1[i - 1]
+            t2 = token2[j - 1]
+            if equals_fn(t1, t2) if equals_fn else t1 == t2:
+                matrix[i][j] = matrix[i - 1][j - 1]
+            else:
+                a = matrix[i][j - 1]
+                b = matrix[i - 1][j]
+                c = matrix[i - 1][j - 1]
+                matrix[i][j] = min(a, b, c) + 1
+
+    return int(matrix[rows - 1][cols - 1])
