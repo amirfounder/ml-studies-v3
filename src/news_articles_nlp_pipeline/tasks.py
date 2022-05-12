@@ -74,11 +74,6 @@ def analyze_text(entry: IndexEntry):
     text = read(input_path)
     doc = nlp(text)
 
-    sentences = {
-        'old': [],
-        'new': []
-    }
-
     def clean_tokens(_tokens: list):
         return [
             token for token in _tokens if
@@ -91,16 +86,22 @@ def analyze_text(entry: IndexEntry):
         ]
 
     # Separate potentially reused sentences from unique ones.
+    # abstract into a subtask "split_sentences"
+    sentences = {
+        'old': [],
+        'new': []
+    }
     with get_sentence_index() as sentence_index:
         for sentence in doc.sents:
-            sentence_tokens_lemmatized = [s.lemma_.lower() for s in clean_tokens(sentence)]
+            sentence_lemmatized = ' '.join([s.lemma_.lower() for s in clean_tokens(sentence)])
 
-            if sentence_tokens_lemmatized in sentence_index:
-                sentence_index[sentence_tokens_lemmatized]['count'] += 1
+            # TODO - add logic to account for the total amount of sentences indexed in the sentence index.
+            if sentence_lemmatized in sentence_index:
+                sentence_index[sentence_lemmatized]['count'] += 1
                 sentences['old'].append(sentence)
 
             else:
-                sentence_index[sentence_tokens_lemmatized] = {'count': 1}
+                sentence_index[sentence_lemmatized] = {'count': 1}
                 sentences['new'].append(sentence)
 
         sentence_index['article_count'] += 1

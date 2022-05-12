@@ -13,19 +13,6 @@ from ..enums import Paths
 
 
 @subtask(silent_success=True, silent_start=True)
-def clean_tokens(tokens: list[Token]):
-    return [
-        token for token in tokens if
-        not token.is_stop and
-        not token.is_punct and
-        not token.like_url and
-        not token.like_email and
-        not token.text.startswith('@') and
-        not token.is_space
-    ]
-
-
-@subtask(silent_success=True, silent_start=True)
 def scrape_rss_entries(rss_url) -> list[dict]:
     return feedparser.parse(rss_url).entries
 

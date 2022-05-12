@@ -75,8 +75,9 @@ def get_sentence_index() -> Generator[SentenceIndex, None, None]:
 
 class SentenceIndex(Model):
     """
-    index model:
+    model:
     {
+        sentences_count: n,
         sentences: {
             "<lemmatized_sentence_sequence_n>: {
                 "id": <id>
@@ -85,6 +86,7 @@ class SentenceIndex(Model):
             }
             ...
         }
+        associated_articles_count: n,
         associated_articles: {
             "n": {
                 <sentence_id_n>: ...
@@ -95,20 +97,24 @@ class SentenceIndex(Model):
     """
 
     @property
-    def entries_count(self):
+    def sentences_count(self):
         return len(self.sentences)
+
+    @property
+    def associated_articles_count(self):
+        return len(self.associated_articles)
 
     def __init__(self, path):
         self._index = try_load_json(read(path))
         self.sentences = {}
-        self.associated_articles = {}
         self._sentences_have_been_loaded = False
+        self.associated_articles = {}
         self._associated_articles_have_been_loaded = False
 
-    def __contains__(self, item):
-        return item in self._index
+    def __contains__(self, lemmatized_sentence):
+        return lemmatized_sentence in self.get_sentences()
 
-    def get_entries(self):
+    def get_sentences(self):
         if not self._sentences_have_been_loaded:
             self.sentences = self._index.get('sentences')
             self._entries_have_been_loaded = True
