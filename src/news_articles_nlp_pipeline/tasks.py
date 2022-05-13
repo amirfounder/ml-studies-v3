@@ -13,11 +13,11 @@ from ..env import is_env_dev
 from ..models import ArticleIndexEntry, SentenceIndexEntry
 
 
-@threaded(max_threads=50)
+@threaded(max_threads=1)
 @log_report(ReportTypes.SCRAPE_ARTICLE)
 @task()
 def scrape_html(entry: ArticleIndexEntry):
-    output_path = Paths.SCRAPE_HTMLS_OUTPUT.format(**dict(entry))
+    output_path = Paths.SCRAPE_HTMLS_OUTPUT.format(source=entry.source, filename=entry.filename)
     
     resp = requests.get(entry.url)
     resp.raise_for_status()
