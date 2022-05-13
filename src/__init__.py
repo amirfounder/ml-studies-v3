@@ -1,1 +1,1 @@
-from .nlp_data_capture_pipeline import *
+from .news_articles_nlp_pipeline import *

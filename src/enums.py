@@ -1,28 +1,39 @@
 from enum import Enum
 
-from .env import env
-
-
-def data_directory_name():
-    return 'data/' + env('')
+from .env import working_env
 
 
 class ReportTypes(Enum):
     SCRAPE_ARTICLE = 'scrape_articles'
     EXTRACT_TEXT = 'extract_texts'
-    PROCESS_TEXT = 'process_texts'
-    CREATE_WORDCLOUD = 'create_wordclouds'
+    ANALYZE_TEXT = 'analyze_texts'
+    CREATE_SENTIMENT_ANALYSIS = 'create_sentiment_analysis'
+    CREATE_SUMMARY = 'create_summary'
 
 
 class Paths(Enum):
-    LOGGING = '{d}/logs.log'
-    SCRAPE_HTMLS_OUTPUT = '{d}/cnn_articles_html/{filename}.html'
-    EXTRACT_TEXTS_OUTPUT = '{d}/cnn_articles_extracted_texts/{filename}.txt'
-    PROCESS_TEXTS_OUTPUT = '{d}/cnn_articles_processed_texts/{filename}.pickle'
-    CNN_ARTICLE_INDEX = '{d}/index.json'
+    LOGGING = 'data/{env}/{pipeline}/logs.log'
+    ARTICLES_INDEX = 'data/{env}/news-articles-nlp/index.json'
+    SENTENCES_INDEX = 'data/{env}/news-articles-nlp/sentence-index.json'
+
+    SCRAPE_HTMLS_OUTPUT = 'data/{env}/news-articles-nlp/articles//{source}/html/{filename}.html'
+    EXTRACT_TEXTS_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/extracted/{filename}.txt'
+    ANALYZE_TEXTS_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/analyzed/{filename}.json'
+    SENTIMENT_ANALYSES_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/sentiment-analyses/{filename}.json'
+    SUMMARIES_OUTPUT = 'data/{env}/news-articles-nlp/articles/{source}/summaries/{filename}.txt'
+
+    CNN_MONEY_RSS_HTML_OUTPUT = 'data/{env}/news-articles-nlp/static/cnn-money-rss-page.html'
+    CNN_RSS_HTML_OUTPUT = 'data/{env}/news-articles-nlp/static/cnn-rss-page.html'
 
     def format(self, **kwargs):
-        kwargs['d'] = data_directory_name()
+        env = working_env() or 'no-env'
+        pipeline = 'news-article-nlp'
+
+        kwargs.update({
+            'env': env,
+            'pipeline': pipeline
+        })
+
         return self.value.format(**kwargs)
 
     def __str__(self):
