@@ -10,13 +10,13 @@ from ..context_managers import get_sentence_index
 from ..decorators import task, log_report, threaded
 from ..enums import ReportTypes, Paths
 from ..env import is_env_dev
-from ..models import IndexEntry, SentenceIndex, SentenceIndexEntry
+from ..models import ArticleIndexEntry, SentenceIndex, SentenceIndexEntry
 
 
 @threaded(max_threads=50)
 @log_report(ReportTypes.SCRAPE_ARTICLE)
 @task()
-def scrape_html(entry: IndexEntry):
+def scrape_html(entry: ArticleIndexEntry):
     output_path = Paths.SCRAPE_HTMLS_OUTPUT.format(**dict(entry))
     
     resp = requests.get(entry.url)
@@ -27,7 +27,7 @@ def scrape_html(entry: IndexEntry):
 @threaded(max_threads=100)
 @log_report(ReportTypes.EXTRACT_TEXT)
 @task()
-def extract_text(entry: IndexEntry):
+def extract_text(entry: ArticleIndexEntry):
     input_path = Paths.SCRAPE_HTMLS_OUTPUT.format(**dict(entry))
     output_path = Paths.EXTRACT_TEXTS_OUTPUT.format(**dict(entry))
 
@@ -47,7 +47,7 @@ def extract_text(entry: IndexEntry):
 @threaded(max_threads=1 if is_env_dev() else 100)
 @log_report(ReportTypes.ANALYZE_TEXT)
 @task()
-def analyze_text(entry: IndexEntry):
+def analyze_text(entry: ArticleIndexEntry):
     input_path = Paths.EXTRACT_TEXTS_OUTPUT.format(**dict(entry))
     output_path = Paths.ANALYZE_TEXTS_OUTPUT.format(**dict(entry))
 
@@ -128,7 +128,7 @@ def analyze_text(entry: IndexEntry):
 @threaded(max_threads=100)
 @log_report(ReportTypes.CREATE_SENTIMENT_ANALYSIS)
 @task()
-def create_sentiment_analysis(entry: IndexEntry):
+def create_sentiment_analysis(entry: ArticleIndexEntry):
     standard_sentiment = None
     fine_grained_sentiment = None
     emotion = None
@@ -139,5 +139,5 @@ def create_sentiment_analysis(entry: IndexEntry):
 @threaded(max_threads=100)
 @log_report(ReportTypes.CREATE_SUMMARY)
 @task()
-def create_summary(entry: IndexEntry):
+def create_summary(entry: ArticleIndexEntry):
     pass
