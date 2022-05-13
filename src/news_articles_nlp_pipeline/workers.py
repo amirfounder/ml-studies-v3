@@ -1,5 +1,5 @@
 from ..commons import info
-from ..context_managers import get_article_index
+from ..index_manager import get_index
 from ..decorators import worker, join_threads
 from ..env import is_env_dev
 from ..models import ArticleIndexEntry
@@ -10,7 +10,7 @@ from .subtasks import get_cnn_rss_urls, get_cnn_money_rss_urls, scrape_rss_entri
 
 @worker
 def index_newest_articles():
-    with get_article_index() as index:
+    with get_index('articles') as index:
         prev_entries_count = index.articles_count
         entries = index.get_articles()
         
@@ -50,7 +50,7 @@ def scrape_articles():
         attempted = _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].has_been_attempted
         return first_ten and not attempted if is_env_dev() else not attempted
 
-    with get_article_index() as index:
+    with get_index('articles') as index:
         for entry in index.get_articles(filter_callback=filter_callback).values():
             scrape_html(entry)
 
@@ -65,7 +65,7 @@ def extract_texts():
         attempted = _entry.reports[ReportTypes.EXTRACT_TEXT.value].has_been_attempted
         return prev_success if is_env_dev() else prev_success and not attempted
 
-    with get_article_index() as index:
+    with get_index('articles') as index:
         for entry in index.get_articles(filter_callback=filter_callback).values():
             extract_text(entry)
         
@@ -80,7 +80,7 @@ def analyze_texts():
         attempted = _entry.reports[ReportTypes.ANALYZE_TEXT.value].has_been_attempted
         return prev_success if is_env_dev() else prev_success and not attempted
 
-    with get_article_index() as index:
+    with get_index('articles') as index:
         for entry in index.get_articles(filter_callback=filter_callback).values():
             analyze_text(entry)
 

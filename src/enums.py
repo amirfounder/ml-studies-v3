@@ -8,9 +8,6 @@ class BaseEnum(Enum):
         kwargs.update({'env': working_env() or 'no-env'})
         return self.value.format(**kwargs)
 
-    def __str__(self):
-        return self.format()
-
 
 class Pipelines(BaseEnum):
     NEWS_ARTICLES_NLP = 'news-articles-nlp'

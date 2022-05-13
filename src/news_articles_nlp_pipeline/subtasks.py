@@ -19,7 +19,7 @@ def scrape_rss_entries(rss_url) -> list[dict]:
 
 @subtask(silent_success=True, silent_start=True)
 def get_cnn_rss_urls():
-    path = str(Paths.CNN_RSS_HTML_OUTPUT)
+    path = Paths.CNN_RSS_HTML_OUTPUT.format()
     if not exists(path):
         resp = requests.get('https://www.cnn.com/services/rss/')
         resp.raise_for_status()
@@ -35,7 +35,7 @@ def get_cnn_rss_urls():
 
 @subtask(silent_success=True, silent_start=True)
 def get_cnn_money_rss_urls():
-    path = str(Paths.CNN_MONEY_RSS_HTML_OUTPUT)
+    path = Paths.CNN_MONEY_RSS_HTML_OUTPUT.format()
     if not exists(path):
         resp = requests.get('https://money.cnn.com/services/rss/')
         resp.raise_for_status()

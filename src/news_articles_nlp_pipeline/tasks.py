@@ -6,7 +6,7 @@ import requests
 import contractions
 
 from ..commons import write, read, nlp
-from ..context_managers import get_sentence_index
+from ..index_manager import get_index
 from ..decorators import task, log_report, threaded
 from ..enums import ReportTypes, Paths
 from ..env import is_env_dev
@@ -56,7 +56,7 @@ def analyze_text(entry: ArticleIndexEntry):
 
     lemmatized_sentences = []
 
-    with get_sentence_index() as sentence_index:
+    with get_index('sentences') as sentence_index:
         for sentence in doc.sents:
             
             lemmas = [

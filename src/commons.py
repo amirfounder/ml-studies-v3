@@ -75,7 +75,7 @@ def _log(message, level: str = 'info'):
     message = timestamp + env + pid + thread_name + level + message
     print(message)
     message += '\n'
-    write(str(Paths.LOGGING), message, mode='a')
+    write(Paths.LOGGING.format(), message, mode='a')
 
 
 def info(message):
