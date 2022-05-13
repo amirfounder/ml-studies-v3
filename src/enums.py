@@ -1,6 +1,6 @@
 from enum import Enum
 
-from .env import env
+from .env import working_env
 
 
 class ReportTypes(Enum):
@@ -26,11 +26,15 @@ class Paths(Enum):
     CNN_RSS_HTML_OUTPUT = 'data/{env}/news-articles-nlp/static/cnn-rss-page.html'
 
     def format(self, **kwargs):
-        return self.value.format(
-            env=env() or 'no-env',
-            pipeline='news-articles-nlp',
-            **kwargs
-        )
+        env = working_env() or 'no-env'
+        pipeline = 'news-article-nlp'
+
+        kwargs.update({
+            'env': env,
+            'pipeline': pipeline
+        })
+
+        return self.value.format(**kwargs)
 
     def __str__(self):
         return self.format()
@@ -39,11 +43,3 @@ class Paths(Enum):
 class Status(Enum):
     FAILURE = 'FAILURE'
     SUCCESS = 'SUCCESS'
-
-
-path1 = 'data/dev/news-articles-nlp/articles/cnn/html/1.html'
-path2 = 'data/dev/news-articles-nlp/articles/fox/extracted/1.txt'
-path3 = 'data/dev/news-articles-nlp/articles/huffington-post/processed/1.pickle'
-path4 = 'data/dev/news-articles-nlp/articles/huffington-post/wordcloud/1.csv'
-path5 = 'data/dev/news-articles-nlp/articles/huffington-post/wordcloud/1.png'
-template = 'data/{env}/{pipeline}/articles/{source}/{worker}/{filename}.{extension}'

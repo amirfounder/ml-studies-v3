@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, timezone
 from os.path import exists
 from os import environ, makedirs
@@ -8,7 +9,7 @@ import numpy as np
 
 import spacy
 
-from .env import env
+from .env import working_env
 from .enums import Paths
 
 nlp = spacy.load('en_core_web_sm')
@@ -65,12 +66,13 @@ def now():
 
 
 def _log(message, level: str = 'info'):
-    _env = 'ENV: ' + str(env()).upper().ljust(10)
+    env = 'ENV: ' + str(working_env()).upper().ljust(10)
     level = level.upper().ljust(10)
     timestamp = now().isoformat().ljust(36)
+    pid = 'PID: ' + str(os.getpid()).ljust(15)
     thread_name = 'THREAD: ' + current_thread().name.ljust(25)
 
-    message = timestamp + _env + thread_name + level + message
+    message = timestamp + env + pid + thread_name + level + message
     print(message)
     message += '\n'
     write(str(Paths.LOGGING), message, mode='a')
