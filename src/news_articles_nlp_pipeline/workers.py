@@ -1,7 +1,8 @@
 from ..commons import info
+from ..context_managers import get_article_index
 from ..decorators import worker, join_threads
 from ..env import is_env_dev
-from ..models import IndexEntry, get_index
+from ..models import IndexEntry
 from ..enums import Status, ReportTypes
 from .tasks import scrape_html, extract_text, analyze_text
 from .subtasks import get_cnn_rss_urls, get_cnn_money_rss_urls, scrape_rss_entries
@@ -9,7 +10,7 @@ from .subtasks import get_cnn_rss_urls, get_cnn_money_rss_urls, scrape_rss_entri
 
 @worker
 def index_newest_articles():
-    with get_index() as index:
+    with get_article_index() as index:
         prev_entries_count = index.entries_count
         entries = index.get_entries()
         
@@ -41,11 +42,6 @@ def index_newest_articles():
 
 
 @worker
-def image_articles():
-    pass
-
-
-@worker
 def scrape_articles():
 
     def filter_fn(_entry: IndexEntry):
@@ -53,7 +49,7 @@ def scrape_articles():
         attempted = _entry.reports[ReportTypes.SCRAPE_ARTICLE.value].has_been_attempted
         return first_ten and not attempted if is_env_dev() else not attempted
 
-    with get_index() as index:
+    with get_article_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             scrape_html(entry)
 
@@ -68,7 +64,7 @@ def extract_texts():
         attempted = _entry.reports[ReportTypes.EXTRACT_TEXT.value].has_been_attempted
         return prev_success if is_env_dev() else prev_success and not attempted
 
-    with get_index() as index:
+    with get_article_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             extract_text(entry)
         
@@ -80,10 +76,10 @@ def analyze_texts():
 
     def filter_fn(_entry: IndexEntry):
         prev_success = _entry.reports[ReportTypes.EXTRACT_TEXT.value].status == Status.SUCCESS
-        attempted = _entry.reports[ReportTypes.ANALYZE_TEXT.value].status == Status.SUCCESS
+        attempted = _entry.reports[ReportTypes.ANALYZE_TEXT.value].has_been_attempted
         return prev_success if is_env_dev() else prev_success and not attempted
 
-    with get_index() as index:
+    with get_article_index() as index:
         for entry in index.get_entries(filter_fn=filter_fn).values():
             analyze_text(entry)
 

@@ -6,10 +6,11 @@ import requests
 import contractions
 
 from ..commons import write, read, nlp
+from ..context_managers import get_sentence_index
 from ..decorators import task, log_report, threaded
 from ..enums import ReportTypes, Paths
 from ..env import is_env_dev
-from ..models import IndexEntry, get_sentence_index, SentenceIndex
+from ..models import IndexEntry, SentenceIndex, SentenceIndexEntry
 
 
 @threaded(max_threads=50)
@@ -21,27 +22,6 @@ def scrape_html(entry: IndexEntry):
     resp = requests.get(entry.url)
     resp.raise_for_status()
     write(output_path, resp.text)
-
-
-def get_articles_sentence_index():
-    pass
-
-
-@log_report(ReportTypes)
-@task()
-def identify_similar_phrases(entry: IndexEntry):
-    """
-    sentences = {}
-    sentences = {
-        '1': {
-            's1': 1,
-            's2': 2,
-            's3': 3
-        }
-    }
-    while true:
-    """
-    pass
 
 
 @threaded(max_threads=100)
@@ -74,49 +54,39 @@ def analyze_text(entry: IndexEntry):
     text = read(input_path)
     doc = nlp(text)
 
-    def clean_tokens(_tokens: list):
-        return [
-            token for token in _tokens if
-            not token.is_stop and
-            not token.is_punct and
-            not token.like_url and
-            not token.like_email and
-            not token.text.startswith('@') and
-            not token.is_space
-        ]
+    lemmatized_sentences = []
 
-    # Separate potentially reused sentences from unique ones.
-    # abstract into a subtask "split_sentences"
-    sentences = {
-        'old': [],
-        'new': []
-    }
     with get_sentence_index() as sentence_index:
         for sentence in doc.sents:
-            sentence_lemmatized = ' '.join([s.lemma_.lower() for s in clean_tokens(sentence)])
+            
+            lemmas = [
+                token.lemma_.lower() for token in sentence if
+                not token.is_stop and
+                not token.is_punct and
+                not token.like_url and
+                not token.like_email and
+                not token.text.startswith('@') and
+                not token.is_space
+            ]
 
-            # TODO - add logic to account for the total amount of sentences indexed in the sentence index.
-            if sentence_lemmatized in sentence_index:
-                sentence_index[sentence_lemmatized]['count'] += 1
-                sentences['old'].append(sentence)
+            sequence = ' '.join(lemmas)
+            
+            if sequence in sentence_index and \
+                    entry.filename not in sentence_index[sequence].occurred_in_articles:
+                sentence_index[sequence].occurrences += 1
+                sentence_index[sequence].occurred_in_articles.append(entry.filename)
+                continue
 
-            else:
-                sentence_index[sentence_lemmatized] = {'count': 1}
-                sentences['new'].append(sentence)
+            sentence_index[sequence] = SentenceIndexEntry(
+                occurrences=1,
+                occurred_in_articles=[entry.filename],
+                non_lemmatized_sequence=sentence.text
+            )
+            lemmatized_sentences.append(lemmas)
 
-        sentence_index['article_count'] += 1
-
-    tokens = [
-        token for token in doc if
-        not token.is_stop and
-        not token.is_punct and
-        not token.like_url and
-        not token.like_email and
-        not token.text.startswith('@') and
-        not token.is_space
-    ]
-
-    lemmas = [token.lemma_ for token in tokens]
+    lemmas = []
+    for lemmatized_sentence in lemmatized_sentences:
+        lemmas.extend(lemmatized_sentence)
 
     lengths = {}
     occurrences = {}
@@ -131,7 +101,7 @@ def analyze_text(entry: IndexEntry):
     for lemma, _occurrences in occurrences.items():
         frequencies[lemma] = _occurrences / total
 
-    models = {
+    lemmas = {
         lemma: {
             'occurrences': occurrences[lemma],
             'frequency': frequencies[lemma],
@@ -143,14 +113,13 @@ def analyze_text(entry: IndexEntry):
     views = {
         'occurrences': occurrences,
         'frequencies': frequencies,
-        'syllables': None,  # TODO implement this?
         'lengths': lengths
     }
 
     contents = {
         'views': views,
-        'models': models,
-        'sentences': sentences
+        'lemmas': lemmas,
+        'lemmatized_sentences': {i: sentence for i, sentence in enumerate(lemmatized_sentences)}
     }
 
     write(output_path, json.dumps(contents))
