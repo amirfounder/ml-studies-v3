@@ -71,6 +71,7 @@ class Index(Model):
         if not self._models_have_been_loaded:
             for k, v in self._index.get(self._key, {}).items():
                 self._models[k] = self._model_cls(**v)
+            self._models_have_been_loaded = True
 
         models_to_return = {}
 
@@ -125,7 +126,7 @@ class ArticleIndexEntry(Model):
         self.topic = kwargs['topic']
         self.filename = kwargs['filename']
         self.source = kwargs.get('source')
-        self.reports = {t.value: Report() for t in ReportTypes}
+        self.reports = {t.value: None for t in ReportTypes}
 
         for k, v in kwargs.get('reports', {}).items():
             if k in self.reports:
