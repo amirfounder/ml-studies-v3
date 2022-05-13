@@ -67,16 +67,16 @@ class Index(Model):
     def __getitem__(self, item):
         return self._models[item]
 
-    def _get_models(self, filter__callback: Callable[[Any], bool] = None):
+    def _get_models(self, filter_callback: Callable[[Any], bool] = None):
         if not self._models_have_been_loaded:
             for k, v in self._index.get(self._key, {}).items():
                 self._models[k] = self._model_cls(**v)
 
         models_to_return = {}
 
-        if filter__callback:
+        if filter_callback:
             for k, v in self._models.items():
-                if filter__callback(v):
+                if filter_callback(v):
                     models_to_return[k] = v
 
         else:
@@ -98,6 +98,19 @@ class SentenceIndex(Index):
         return self._get_models()
 
 
+class ArticleIndex(Index):
+    def __init__(self, path: str):
+        super().__init__(path, 'articles', ArticleIndexEntry)
+        self.articles = self._models
+
+    @property
+    def articles_count(self):
+        return self._models_count
+
+    def get_articles(self, filter_callback: Callable[[Any], bool] = None) -> dict:
+        return self._get_models(filter_callback)
+
+
 class SentenceIndexEntry(Model):
     def __init__(self, **kwargs):
         self.occurred_in_articles = kwargs.get('occurred_in_articles', [])
@@ -105,49 +118,20 @@ class SentenceIndexEntry(Model):
         self.non_lemmatized_sequence = kwargs.get('non_lemmatized_sequence')
 
 
-class ArticleIndex(Model):
-    @property
-    def entries_count(self):
-        return len(self.get_entries())
-
-    def __init__(self, path: str):
-        self._index = try_load_json(read(path))
-        self.entries = {}
-        self._entries_have_been_loaded = False
-
-    def get_entries(self, filter_fn: Callable = None) -> dict:
-        if not self._entries_have_been_loaded:
-            for k, v in self._index.get('entries', {}).items():
-                self.entries[k] = IndexEntry(**v)
-            self._entries_have_been_loaded = True
-
-        to_release = {}
-
-        if filter_fn:
-            for k, v in self.entries.items():
-                if filter_fn(v):
-                    to_release[k] = v
-        else:
-            to_release = self.entries
-
-        return to_release
-
-
-class IndexEntry(Model):
+class ArticleIndexEntry(Model):
     def __init__(self, **kwargs):
         self.filename = kwargs['filename']
-        self.reports: dict[str, Report] = {
-            k: (v if isinstance(v, Report) else Report(**v))
-            for k, v in kwargs.get('reports', {}).items()
-            if k in [t.value for t in ReportTypes]
-        }
-        for t in ReportTypes:
-            if t.value not in self.reports:
-                self.reports[t.value] = Report()
         self.url = kwargs['url']
         self.topic = kwargs['topic']
         self.filename = kwargs['filename']
-        self.source = kwargs.get('source', 'cnn')
+        self.source = kwargs.get('source')
+        self.reports = {t.value: Report() for t in ReportTypes}
+
+        for k, v in kwargs.get('reports', {}).items():
+            if k in self.reports:
+                if not isinstance(v, Report):
+                    v = Report(**v)
+                self.reports[k] = v
 
 
 class Report(Model):

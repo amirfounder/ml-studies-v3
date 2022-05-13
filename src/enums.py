@@ -3,7 +3,20 @@ from enum import Enum
 from .env import working_env
 
 
-class ReportTypes(Enum):
+class BaseEnum(Enum):
+    def format(self, **kwargs):
+        kwargs.update({'env': working_env() or 'no-env'})
+        return self.value.format(**kwargs)
+
+    def __str__(self):
+        return self.format()
+
+
+class Pipelines(BaseEnum):
+    NEWS_ARTICLES_NLP = 'news-articles-nlp'
+
+
+class ReportTypes(BaseEnum):
     SCRAPE_ARTICLE = 'scrape_articles'
     EXTRACT_TEXT = 'extract_texts'
     ANALYZE_TEXT = 'analyze_texts'
@@ -11,8 +24,8 @@ class ReportTypes(Enum):
     CREATE_SUMMARY = 'create_summary'
 
 
-class Paths(Enum):
-    LOGGING = 'data/{env}/{pipeline}/logs.log'
+class Paths(BaseEnum):
+    LOGGING = 'data/{env}/news-articles-nlp/logs.log'
     ARTICLES_INDEX = 'data/{env}/news-articles-nlp/index.json'
     SENTENCES_INDEX = 'data/{env}/news-articles-nlp/sentence-index.json'
 
@@ -25,21 +38,7 @@ class Paths(Enum):
     CNN_MONEY_RSS_HTML_OUTPUT = 'data/{env}/news-articles-nlp/static/cnn-money-rss-page.html'
     CNN_RSS_HTML_OUTPUT = 'data/{env}/news-articles-nlp/static/cnn-rss-page.html'
 
-    def format(self, **kwargs):
-        env = working_env() or 'no-env'
-        pipeline = 'news-article-nlp'
 
-        kwargs.update({
-            'env': env,
-            'pipeline': pipeline
-        })
-
-        return self.value.format(**kwargs)
-
-    def __str__(self):
-        return self.format()
-
-
-class Status(Enum):
+class Status(BaseEnum):
     FAILURE = 'FAILURE'
     SUCCESS = 'SUCCESS'

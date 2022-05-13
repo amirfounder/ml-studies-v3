@@ -4,7 +4,7 @@ from typing import Callable
 
 from src.commons import now, info, error, success
 from src.enums import ReportTypes
-from src.models import IndexEntry, Report
+from src.models import ArticleIndexEntry, Report
 
 
 def try_catch(func):
@@ -69,7 +69,7 @@ def log_report(name: ReportTypes):
     def outer(func):
         def inner(*args, **kwargs):
             report = Report.open()
-            entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, IndexEntry)]), None)
+            entry = kwargs.get('entry') or next(iter([a for a in args if isinstance(a, ArticleIndexEntry)]), None)
             result, exception, (start, end, elapsed) = func(*args, **kwargs)
             report.close(result, exception, start=start, end=end, elapsed=elapsed)
             entry.reports[name.value] = report
