@@ -10,7 +10,7 @@ from ..context_managers import get_sentence_index
 from ..decorators import task, log_report, threaded
 from ..enums import ReportTypes, Paths
 from ..env import is_env_dev
-from ..models import ArticleIndexEntry, SentenceIndex, SentenceIndexEntry
+from ..models import ArticleIndexEntry, SentenceIndexEntry
 
 
 @threaded(max_threads=50)
@@ -110,14 +110,7 @@ def analyze_text(entry: ArticleIndexEntry):
         } for lemma in lemmas
     }
 
-    views = {
-        'occurrences': occurrences,
-        'frequencies': frequencies,
-        'lengths': lengths
-    }
-
     contents = {
-        'views': views,
         'lemmas': lemmas,
         'lemmatized_sentences': {i: sentence for i, sentence in enumerate(lemmatized_sentences)}
     }

@@ -61,7 +61,7 @@ This function should also (like a task) implement thread / process safe protocol
 
 # todo
 
-- parameter to allow index to flush regularly
+- parameter to allow index to flush regularly (will need as we scale the amount of news articles scraped)
 - custom thread to return values and store them into a pool of results that is retrieved by the `join_threads` fn
 - file locks
 

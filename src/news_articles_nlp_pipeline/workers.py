@@ -35,7 +35,8 @@ def index_newest_articles():
                         _index=entries,
                         url=url,
                         topic=topic,
-                        filename=next_file_name
+                        filename=next_file_name,
+                        source='cnn'
                     )
 
         info(f'New entries indexed: {index.articles_count - prev_entries_count}')
