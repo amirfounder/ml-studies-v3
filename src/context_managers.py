@@ -1,10 +1,14 @@
 import json
 from contextlib import contextmanager
 from typing import Generator
+from threading import Lock
 
 from src.commons import error, write
 from src.enums import Paths
 from src.models import ArticleIndex, SentenceIndex
+
+
+lock = Lock()
 
 
 @contextmanager
@@ -24,15 +28,15 @@ def get_article_index() -> Generator[ArticleIndex, None, None]:
 
 @contextmanager
 def get_sentence_index() -> Generator[SentenceIndex, None, None]:
-    # TODO - Because we will be loading all sentences chrome
-    path = str(Paths.SENTENCES_INDEX)
-    index = SentenceIndex(path)
+    with lock:
+        path = str(Paths.SENTENCES_INDEX)
+        index = SentenceIndex(path)
 
-    try:
-        yield index
+        try:
+            yield index
 
-    except Exception as e:
-        error('Exception occurred. (There are likely details in further logs ...)', e)
+        except Exception as e:
+            error('Exception occurred. (There are likely details in further logs ...)', e)
 
-    finally:
-        write(path, json.dumps(dict(index)))
+        finally:
+            write(path, json.dumps(dict(index)))
