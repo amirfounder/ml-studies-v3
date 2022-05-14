@@ -7,10 +7,7 @@ from src.enums import Paths
 from src.models import ArticleIndex, SentenceIndex
 
 
-lock = Lock()
-
-
-index_cls_path_map = {
+index_map = {
     'sentences': (SentenceIndex, Paths.SENTENCES_INDEX),
     'articles': (ArticleIndex, Paths.ARTICLES_INDEX)
 }
@@ -18,8 +15,8 @@ index_cls_path_map = {
 
 @contextmanager
 def get_index(name: str):
-    with lock:
-        index_cls, path = index_cls_path_map.get(name)
+    with Lock():
+        index_cls, path = index_map.get(name)
         index = index_cls(path.format())
 
         try:
@@ -29,4 +26,4 @@ def get_index(name: str):
             error('Exception occurred. (There are likely details in further logs ...)', e)
 
         finally:
-            write(path, json.dumps(dict(index)))
+            write(path.format(), json.dumps(dict(index)))

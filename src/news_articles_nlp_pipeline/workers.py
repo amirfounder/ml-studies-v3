@@ -4,7 +4,7 @@ from ..decorators import worker, join_threads
 from ..env import is_env_dev
 from ..models import ArticleIndexEntry
 from ..enums import Status, ReportTypes
-from .tasks import scrape_html, extract_text, analyze_text
+from .tasks import scrape_html, extract_text, analyze_text, create_sentiment_analysis
 from .subtasks import get_cnn_rss_urls, get_cnn_money_rss_urls, scrape_rss_entries
 
 
@@ -89,7 +89,17 @@ def analyze_texts():
 
 @worker
 def create_sentiment_analyses():
-    pass
+
+    def filter_callback(_entry: ArticleIndexEntry):
+        prev_success = _entry.reports[ReportTypes.ANALYZE_TEXT.value].status == Status.SUCCESS
+        attempted = _entry.reports[ReportTypes.CREATE_SENTIMENT_ANALYSIS.value].has_been_attempted
+        return prev_success if is_env_dev() else prev_success and not attempted
+
+    with get_index('articles') as index:
+        for entry in index.get_articles(filter_callback).values():
+            create_sentiment_analysis(entry)
+
+        join_threads(create_sentiment_analysis)
 
 
 @worker

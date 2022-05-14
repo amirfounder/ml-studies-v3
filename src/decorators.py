@@ -4,6 +4,7 @@ from typing import Callable
 
 from src.commons import now, info, error, success
 from src.enums import ReportTypes
+from src.env import is_env_dev
 from src.models import ArticleIndexEntry, Report
 
 
@@ -95,8 +96,11 @@ def threaded(max_threads: int = None):
     """
     Note: This decorator must be the last of the decorators used on a fn as the threaded fn map uses the id of the
     inner functions of this decorator. Failure to do so will result in an almost guaranteed failed thread cleanup.
+    :param max_threads - The maximum count of threads to run at a time. Defaults to 1 if in dev, 100 if prod.
     """
     _id = 0
+    if not max_threads:
+        max_threads = 1 if is_env_dev() else 100
 
     def next_id():
         nonlocal _id
